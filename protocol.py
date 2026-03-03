@@ -1,31 +1,19 @@
+# protocol.py
+
 import json
-import socket
 
-HEADER_SIZE = 4
+def send_json(sock, data: dict):
+    message = json.dumps(data) + "\n"
+    sock.sendall(message.encode("utf-8"))
 
-def send_json(sock: socket.socket, data: dict):
-    payload = json.dumps(data).encode("utf-8")
-    length = len(payload).to_bytes(HEADER_SIZE, byteorder="big")
-    sock.sendall(length + payload)
 
-def receive_json(sock: socket.socket) -> dict | None:
-    try:
-        raw_length = _recv_exactly(sock, HEADER_SIZE)
-        if not raw_length:
+def receive_json(sock):
+    buffer = ""
+    while "\n" not in buffer:
+        data = sock.recv(4096)
+        if not data:
             return None
-        length = int.from_bytes(raw_length, byteorder="big")
-        raw_data = _recv_exactly(sock, length)
-        if not raw_data:
-            return None
-        return json.loads(raw_data.decode("utf-8"))
-    except (ConnectionResetError, OSError):
-        return None
+        buffer += data.decode("utf-8")
 
-def _recv_exactly(sock: socket.socket, n: int) -> bytes | None:
-    data = b""
-    while len(data) < n:
-        chunk = sock.recv(n - len(data))
-        if not chunk:
-            return None
-        data += chunk
-    return data
+    line, _, _ = buffer.partition("\n")
+    return json.loads(line)
