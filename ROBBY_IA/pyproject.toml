@@ -1,0 +1,19 @@
+[project]
+name = "robby-ia"
+version = "0.1.0"
+description = "IA Machine Learning pour ROBBY_CLIENT_IA"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "numpy>=1.26",
+  "scikit-learn>=1.4",
+  "joblib>=1.3"
+]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["robby_ia*"]
