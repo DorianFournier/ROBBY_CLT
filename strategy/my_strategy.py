@@ -37,11 +37,20 @@ def decide(state: GameState, team_id: int) -> list[dict]:
 
         if robot.type == "D":
             # Défenseur : place un bouclier aléatoire
-            commands.append({
-                "robot_id": robot.id,
-                "action":    "SHIELD",
-                "direction": random.choice(SHIELD_DIRECTIONS),
-            })
+            if random.random() < 0.5:
+                commands.append({
+                    "robot_id": robot.id,
+                    "action":    "SHIELD",
+                    "direction": random.choice(SHIELD_DIRECTIONS),
+                })
+            else:
+                commands.append({
+                    "robot_id": robot.id,
+                    "action":   "MOVE",
+                    "target_x": random.randint(0, 14),
+                    "target_y": random.randint(0, 14),
+                    "speed":    robot.max_speed,
+                })
 
         elif robot.type == "K":
             # Destructeur : tire sur un ennemi à portée, sinon bouge
@@ -58,17 +67,42 @@ def decide(state: GameState, team_id: int) -> list[dict]:
                 })
             else:
                 commands.append({
-                    "robot_id":  robot.id,
-                    "action":    "MOVE",
-                    "direction": random.choice(DIRECTIONS),
+                    "robot_id": robot.id,
+                    "action":   "MOVE",
+                    "target_x": random.randint(0, 14),
+                    "target_y": random.randint(0, 14),
+                    "speed":    robot.max_speed,
                 })
 
         elif robot.type == "R":
-            # Radar : se déplace aléatoirement
-            commands.append({
-                "robot_id":  robot.id,
-                "action":    "MOVE",
-                "direction": random.choice(DIRECTIONS),
-            })
+            element = state.element
+            if element.carried_by_id is None:
+                commands.append({
+                    "robot_id": robot.id,
+                    "action":   "MOVE",
+                    "target_x": element.x,
+                    "target_y": element.y,
+                    "speed":    robot.max_speed,
+                })
+            elif element.carried_by_id == robot.id:
+                base = _get_base_position(team_id)
+                print(f"\n---> base : {base}\n")
+                if base:
+                    commands.append({
+                        "robot_id": robot.id,
+                        "action":   "MOVE",
+                        "target_x": base[0],
+                        "target_y": base[1],
+                        "speed":    robot.max_speed,
+                    })
 
     return commands
+
+def _get_base_position(team_id: int):
+    bases = {
+        1: (0.0,  5.0),
+        2: (11.0, 5.0),
+        3: (5.5,  0.0),
+        4: (5.5, 11.0),
+    }
+    return bases.get(team_id)

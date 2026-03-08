@@ -37,6 +37,7 @@ def main():
 
         while True:
             msg = receive_json(sock)
+            print(f"MESSAGE : {msg}\n\n")
             if msg is None:
                 print("[CLIENT] Connexion perdue.")
                 break
