@@ -190,16 +190,17 @@ class GameState:
         """Nombre maximal de cases par tour pour ce robot (K 3, D 2, R 1)."""
         return self.config["move_speed"].get(robot.type, 1)
 
-    def can_follow(self, robot: Robot, path: list[str]) -> bool:
+    def can_follow(self, robot: Robot, path: list[str], avoid=()) -> bool:
         """
         True si le chemin est valide d'après ce que vous voyez : pas plus long
         que la vitesse du robot, chaque case dans la carte et hors des boucliers
         ennemis, case d'arrivée pas pleine. (Les robots se croisent librement
-        en chemin.)
+        en chemin.) `avoid` : cases supplémentaires à éviter (par exemple des
+        boucliers ennemis vus plus tôt et qui ne sont plus visibles).
         """
         if not 1 <= len(path) <= self.speed(robot):
             return False
-        shields = self.shield_cells()
+        shields = self.shield_cells() | set(avoid)
         pos = robot.pos
         for direction in path:
             if direction not in DIRECTIONS:
@@ -209,13 +210,15 @@ class GameState:
                 return False
         return len(self.robots_at(pos)) < self.config["max_robots_per_cell"]
 
-    def shortest_path(self, start: Position, target: Position) -> list[str]:
+    def shortest_path(self, start: Position, target: Position,
+                      avoid=()) -> list[str]:
         """
         Plus court chemin (en directions) de `start` vers `target`, en évitant
-        les boucliers ennemis visibles. Si `target` est inaccessible, chemin vers
-        la case accessible la plus proche de `target`. Parcours en largeur.
+        les boucliers ennemis visibles et les cases de `avoid`. Si `target` est
+        inaccessible, chemin vers la case accessible la plus proche de `target`.
+        Parcours en largeur.
         """
-        shields = self.shield_cells()
+        shields = self.shield_cells() | set(avoid)
 
         def ordered(pos):
             # explorer d'abord les directions les plus directes
@@ -248,18 +251,18 @@ class GameState:
             path.append(d)
         return path[::-1]
 
-    def path_towards(self, robot: Robot, target: Position) -> list[str]:
+    def path_towards(self, robot: Robot, target: Position, avoid=()) -> list[str]:
         """
         Début du plus court chemin vers `target` : au plus `speed(robot)` cases,
-        en contournant les boucliers ennemis visibles. Liste vide si le robot
-        est déjà sur place ou ne peut pas se rapprocher.
+        en contournant les boucliers ennemis visibles (et les cases de `avoid`).
+        Liste vide si le robot est déjà sur place ou ne peut pas se rapprocher.
             path = state.path_towards(k, enemy.pos)
             if path:
                 commands.append(move(k, *path))
         """
-        path = self.shortest_path(robot.pos, target)[: self.speed(robot)]
+        path = self.shortest_path(robot.pos, target, avoid)[: self.speed(robot)]
         # La case d'arrivée ne doit pas être pleine : on raccourcit si besoin
-        while path and not self.can_follow(robot, path):
+        while path and not self.can_follow(robot, path, avoid):
             path.pop()
         return path
 

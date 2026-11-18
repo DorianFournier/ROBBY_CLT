@@ -1,5 +1,6 @@
-# strategy/random_strategy.py
-# Adversaire d'entraînement : joue au hasard (mais sans erreur de règle).
+# bots/level1_random.py
+# NIVEAU 1 — joue au hasard (mais sans erreur de règle).
+# Objectif minimal : une stratégie d'étudiant doit le battre très largement.
 
 import random
 
@@ -8,7 +9,7 @@ from robby.constants import DIRECTIONS, SHIELD_DIRECTIONS
 from robby.strategy import Strategy
 
 
-class RandomStrategy(Strategy):
+class RandomBot(Strategy):
 
     def decide(self, state: GameState) -> list[dict]:
         commands = []

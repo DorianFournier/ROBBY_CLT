@@ -23,19 +23,36 @@ Options :
 | `--host` | adresse du serveur | `127.0.0.1` |
 | `--port` | port du serveur | `8000` |
 | `--name` | nom affiché sur l'écran du serveur (20 caractères max) | `TEAM` |
-| `--strategy` | stratégie à charger (`module:Classe`) | `strategy.my_strategy:MyStrategy` |
+| `--strategy` | `bot1`, `bot2`, `bot3` (bots de référence) ou `module:Classe` | `strategy.my_strategy:MyStrategy` |
 | `-v` | affiche les commandes envoyées à chaque tour | |
 
 Pour vous entraîner, lancez le serveur en local, puis plusieurs clients dans des
-terminaux différents, par exemple votre stratégie contre l'adversaire aléatoire :
+terminaux différents, par exemple votre stratégie contre un bot de référence :
 
 ```bash
 uv run main.py --name Moi
 ```
 
 ```bash
-uv run main.py --name Hasard --strategy strategy.random_strategy:RandomStrategy
+uv run main.py --name Bot2 --strategy bot2
 ```
+
+## Bots de référence (paliers)
+
+Le dossier `bots/` contient trois adversaires d'entraînement, du plus faible au
+plus fort. Le but est de les battre l'un après l'autre.
+
+| Option | Bot | Comportement |
+|---|---|---|
+| `bot1` | `RandomBot` | Joue au hasard, mais sans faute de règle. |
+| `bot2` | `RusherBot` | « Fonceur » : le Radar va droit sur l'élément, le Destructeur tire sur l'ennemi le plus proche ou lui fonce dessus et reste près de son Radar s'il ne voit personne, le Défenseur suit le Radar. Aucune prudence, aucune mémoire. |
+| `bot3` | `TacticianBot` | « Tacticien » : le groupe se déplace autour du Radar. Le Défenseur sert de garde du corps (il se place entre le Radar et la menace, bouclier tourné vers elle), le Radar recule s'il est exposé, le Destructeur escorte le Radar et choisit ses cibles. Il mémorise les ennemis et leurs boucliers, même quand ils sortent de la vue. |
+
+Sur des parties en 1 contre 1 (côtés alternés), `bot2` bat `bot1` dans plus de
+95 % des cas, et `bot3` bat `bot2` dans plus de 95 % des cas.
+
+Lire leur code (`bots/level2_rusher.py`, `bots/level3_tactician.py`) est une
+bonne source d'idées... mais pour les battre, il faudra faire mieux !
 
 Tests :
 
@@ -166,7 +183,7 @@ vous informent de ce qui se passe (voir `robby/strategy.py`).
 | `state.enemies` | ennemis vivants **visibles** |
 | `state.element` | `.pos`, `.is_free`, `.carried_by_id` |
 | `state.my_base`, `state.base_of(team_id)` | positions des bases |
-| `state.path_towards(robot, (x, y))` | début du plus court chemin vers une case, à la vitesse du robot, en contournant les boucliers ennemis |
+| `state.path_towards(robot, (x, y), avoid=())` | début du plus court chemin vers une case, à la vitesse du robot, en contournant les boucliers ennemis visibles et les cases de `avoid` (par exemple des boucliers vus plus tôt) |
 | `state.shortest_path((x0, y0), (x1, y1))` | plus court chemin complet (liste de directions) |
 | `state.speed(robot)` | nombre de cases par tour (K 3, D 2, R 1) |
 | `state.can_follow(robot, chemin)` | le chemin est-il valide d'après ce que vous voyez ? |
