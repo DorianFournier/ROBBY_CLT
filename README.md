@@ -37,6 +37,12 @@ uv run main.py --name Moi
 uv run main.py --name Bot2 --strategy bot2
 ```
 
+Tests :
+
+```bash
+uv run pytest
+```
+
 ## Bots de référence (paliers)
 
 Le dossier `bots/` contient trois adversaires d'entraînement, du plus faible au
@@ -54,11 +60,35 @@ Sur des parties en 1 contre 1 (côtés alternés), `bot2` bat `bot1` dans plus d
 Lire leur code (`bots/level2_rusher.py`, `bots/level3_tactician.py`) est une
 bonne source d'idées... mais pour les battre, il faudra faire mieux !
 
-Tests :
+## S'entraîner sur des dizaines de parties
+
+Le serveur (dépôt ROBBY) peut enchaîner des parties **sans affichage** et
+afficher un classement. C'est le meilleur moyen de savoir si une modification
+de votre stratégie l'améliore vraiment :
 
 ```bash
-uv run pytest
+uv run python -m server.server --headless --games 20 --teams 3
 ```
+
+Lancez cette commande dans le dossier ROBBY. Ensuite, dans le dossier
+robby_clt, démarrez trois clients, chacun dans son terminal :
+
+```bash
+uv run main.py --name Moi
+```
+
+```bash
+uv run main.py --name Bot2 --strategy bot2
+```
+
+```bash
+uv run main.py --name Bot3 --strategy bot3
+```
+
+Les places sur la carte tournent d'une partie à l'autre. Chaque partie affiche
+sa graine : pour **rejouer à l'identique** une partie perdue (et comprendre
+pourquoi), relancez le serveur avec `--headless --games 1 --seed <graine>` et
+les mêmes clients.
 
 ## Les règles
 
@@ -171,7 +201,10 @@ shield(defenseur, "SL")  # SU, SR, SD, SL
 
 La classe garde la même instance pendant toute la partie : vous pouvez stocker
 des informations dans `self`, par exemple la dernière position connue des
-ennemis. Les méthodes `on_game_start`, `on_turn_result` et `on_game_over`
+ennemis. Une **nouvelle instance** est créée au début de chaque partie (une
+série en enchaîne plusieurs). Le module `random` est initialisé avec la
+graine de la partie : utilisez-le (et pas un autre générateur) pour qu'une
+partie puisse être rejouée à l'identique. Les méthodes `on_game_start`, `on_turn_result` et `on_game_over`
 vous informent de ce qui se passe (voir `robby/strategy.py`).
 
 ### Ce que contient `state` (un objet `GameState`)
@@ -209,10 +242,13 @@ ligne** :
 ```
 client → {"type": "register", "name": "MonEquipe"}
 serveur → {"type": "register_ack", "status": "ok", "team_id": 2}
-serveur → {"type": "game_start", "team_id": 2, "config": {...}}
+serveur → {"type": "game_start", "team_id": 2, "seed": 106, "game": 1, "games": 1,
+           "config": {...}}
 à chaque tour :
   serveur → {"type": "game_state", "turn", "phase", "phase_turn", "robots": [...], "element": {...}}
   client  → {"type": "commands", "turn": <tour>, "commands": [...]}   (avant turn_timeout)
   serveur → {"type": "turn_result", "turn", "data": {"moves", "shots", "deaths", "shields", "penalties"}}
 serveur → {"type": "game_over", "winner": 2, "scores": {...}}
+(série : retour à game_start pour la partie suivante, puis à la fin)
+serveur → {"type": "series_over", "ranking": [...]}
 ```
