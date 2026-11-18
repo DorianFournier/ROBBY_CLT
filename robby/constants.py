@@ -37,6 +37,8 @@ DEFAULT_CONFIG = {
     "penalty_turns": 3,
     "kill_points": {"K": 250, "D": 500, "R": 750, "RE": 1000},
     "move_speed": {"K": 3, "D": 2, "R": 1},  # cases par tour
+    "capture_points": 0,   # bonus pour avoir ramené l'élément
+    "survivor_points": 0,  # bonus par robot en vie en fin de partie
     "bases": {},
     "teams": {},
 }

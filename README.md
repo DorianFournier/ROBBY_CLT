@@ -52,10 +52,12 @@ plus fort. Le but est de les battre l'un après l'autre.
 |---|---|---|
 | `bot1` | `RandomBot` | Joue au hasard, mais sans faute de règle. |
 | `bot2` | `RusherBot` | « Fonceur » : le Radar va droit sur l'élément, le Destructeur tire sur l'ennemi le plus proche ou lui fonce dessus et reste près de son Radar s'il ne voit personne, le Défenseur suit le Radar. Aucune prudence, aucune mémoire. |
-| `bot3` | `TacticianBot` | « Tacticien » : le groupe se déplace autour du Radar. Le Défenseur sert de garde du corps (il se place entre le Radar et la menace, bouclier tourné vers elle), le Radar recule s'il est exposé, le Destructeur escorte le Radar et choisit ses cibles. Il mémorise les ennemis et leurs boucliers, même quand ils sortent de la vue. |
+| `bot3` | `TacticianBot` | « Tacticien » : le groupe se déplace autour du Radar. Le Défenseur sert de garde du corps (il se place entre le Radar et la menace, bouclier tourné vers elle), le Radar recule s'il est exposé, les Destructeurs restent sur ses flancs (dans sa zone de vision) et choisissent leurs cibles. En phase 2, il tient sa position : avec le brouillard de guerre, celui qui attend voit l'autre arriver en premier. Il mémorise les ennemis et leurs boucliers, même quand ils sortent de la vue. |
 
-Sur des parties en 1 contre 1 (côtés alternés), `bot2` bat `bot1` dans plus de
-95 % des cas, et `bot3` bat `bot2` dans plus de 95 % des cas.
+Mesuré sur 60 parties en 1 contre 1 (côtés alternés, avec 10 % d'actions
+aléatoires des deux côtés pour que les parties soient toutes différentes) :
+`bot2` bat `bot1` 55 fois, `bot3` bat `bot2` 51 fois et `bot3` bat `bot1`
+52 fois.
 
 Lire leur code (`bots/level2_rusher.py`, `bots/level3_tactician.py`) est une
 bonne source d'idées... mais pour les battre, il faudra faire mieux !
