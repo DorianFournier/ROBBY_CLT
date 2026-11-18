@@ -5,6 +5,8 @@
 # Distance : on compte en nombre de cases, diagonales comprises
 #            (distance de Tchebychev = max(|dx|, |dy|)).
 
+from collections import deque
+
 from robby.constants import DEFAULT_CONFIG, DIRECTIONS
 
 Position = tuple[int, int]
@@ -167,25 +169,106 @@ class GameState:
             "SD": [(x - 1, y + 1), (x, y + 1), (x + 1, y + 1)],
         }.get(robot.shield_direction, [])
 
-    def shield_cells(self) -> set[Position]:
-        """Cases couvertes par les boucliers VISIBLES (les vôtres et ceux détectés)."""
+    def shield_cells(self, only_enemies: bool = True) -> set[Position]:
+        """
+        Cases couvertes par les boucliers VISIBLES.
+
+        Un bouclier ne bloque que les ennemis de son défenseur : par défaut
+        on ne renvoie donc que les boucliers ENNEMIS (ceux qui vous gênent).
+        `only_enemies=False` renvoie aussi les vôtres.
+        """
         cells = set()
         for r in self.robots:
-            if r.alive and r.type == "D" and r.shield_direction:
-                cells.update(self.shield_cells_of(r))
+            if not (r.alive and r.type == "D" and r.shield_direction):
+                continue
+            if only_enemies and r.team_id == self.team_id:
+                continue
+            cells.update(self.shield_cells_of(r))
         return {c for c in cells if self.is_inside(c)}
+
+    def speed(self, robot: Robot) -> int:
+        """Nombre maximal de cases par tour pour ce robot (K 3, D 2, R 1)."""
+        return self.config["move_speed"].get(robot.type, 1)
+
+    def can_follow(self, robot: Robot, path: list[str]) -> bool:
+        """
+        True si le chemin est valide d'après ce que vous voyez : pas plus long
+        que la vitesse du robot, chaque case dans la carte et hors des boucliers
+        ennemis, case d'arrivée pas pleine. (Les robots se croisent librement
+        en chemin.)
+        """
+        if not 1 <= len(path) <= self.speed(robot):
+            return False
+        shields = self.shield_cells()
+        pos = robot.pos
+        for direction in path:
+            if direction not in DIRECTIONS:
+                return False
+            pos = step(pos, direction)
+            if not self.is_inside(pos) or pos in shields:
+                return False
+        return len(self.robots_at(pos)) < self.config["max_robots_per_cell"]
+
+    def shortest_path(self, start: Position, target: Position) -> list[str]:
+        """
+        Plus court chemin (en directions) de `start` vers `target`, en évitant
+        les boucliers ennemis visibles. Si `target` est inaccessible, chemin vers
+        la case accessible la plus proche de `target`. Parcours en largeur.
+        """
+        shields = self.shield_cells()
+
+        def ordered(pos):
+            # explorer d'abord les directions les plus directes
+            def cost(d):
+                x, y = step(pos, d)
+                return (distance((x, y), target),
+                        abs(x - target[0]) + abs(y - target[1]))
+            return sorted(DIRECTIONS, key=cost)
+
+        came_from = {start: None}
+        queue = deque([start])
+        best = start
+        while queue:
+            pos = queue.popleft()
+            if pos == target:
+                best = pos
+                break
+            if distance(pos, target) < distance(best, target):
+                best = pos
+            for d in ordered(pos):
+                nxt = step(pos, d)
+                if nxt in came_from or not self.is_inside(nxt) or nxt in shields:
+                    continue
+                came_from[nxt] = (pos, d)
+                queue.append(nxt)
+
+        path = []
+        while came_from[best] is not None:
+            best, d = came_from[best]
+            path.append(d)
+        return path[::-1]
+
+    def path_towards(self, robot: Robot, target: Position) -> list[str]:
+        """
+        Début du plus court chemin vers `target` : au plus `speed(robot)` cases,
+        en contournant les boucliers ennemis visibles. Liste vide si le robot
+        est déjà sur place ou ne peut pas se rapprocher.
+            path = state.path_towards(k, enemy.pos)
+            if path:
+                commands.append(move(k, *path))
+        """
+        path = self.shortest_path(robot.pos, target)[: self.speed(robot)]
+        # La case d'arrivée ne doit pas être pleine : on raccourcit si besoin
+        while path and not self.can_follow(robot, path):
+            path.pop()
+        return path
 
     def can_move(self, robot: Robot, direction: str) -> bool:
         """
-        True si le déplacement est valide d'après ce que vous voyez.
+        True si le déplacement d'UNE case est valide d'après ce que vous voyez.
         (Un ennemi invisible peut encore occuper la case.)
         """
-        target = step(robot.pos, direction)
-        if not self.is_inside(target):
-            return False
-        if target in self.shield_cells():
-            return False
-        return len(self.robots_at(target)) < self.config["max_robots_per_cell"]
+        return self.can_follow(robot, [direction])
 
     def possible_moves(self, robot: Robot) -> list[str]:
         return [d for d in DIRECTIONS if self.can_move(robot, d)]
@@ -216,7 +299,7 @@ class GameState:
         return shooter.distance_to(target) <= self.config["destructor_range"]
 
     def is_shot_blocked(self, shooter: Robot, target: Robot) -> bool:
-        """True si un bouclier visible se trouve sur la trajectoire du tir."""
+        """True si un bouclier ennemi visible se trouve sur la trajectoire du tir."""
         shields = self.shield_cells()
         dx, dy = target.x - shooter.x, target.y - shooter.y
         steps = max(abs(dx), abs(dy))
@@ -231,7 +314,7 @@ class GameState:
         return False
 
     def targets_in_range(self, shooter: Robot) -> list[Robot]:
-        """Ennemis visibles à portée et non protégés par un bouclier visible."""
+        """Ennemis visibles à portée et non protégés par un bouclier ennemi visible."""
         return [
             e for e in self.enemies
             if self.in_range(shooter, e) and not self.is_shot_blocked(shooter, e)

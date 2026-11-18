@@ -3,6 +3,7 @@
 # stratégie, envoi des commandes.
 
 import logging
+import time
 import traceback
 
 from robby.game_state import GameState
@@ -27,6 +28,11 @@ def check_commands(state: GameState, commands: list[dict]) -> list[str]:
         if not robot.alive:
             errors.append(f"{cmd} : le robot {robot.id} est détruit")
         action = cmd.get("action")
+        if action == "MOVE":
+            path = cmd.get("path", [cmd.get("direction")])
+            if not isinstance(path, list) or not 1 <= len(path) <= state.speed(robot):
+                errors.append(f"{cmd} : chemin de 1 à {state.speed(robot)} "
+                              f"case(s) maximum pour un {robot.type}")
         if action == "SHOOT" and robot.type != "K":
             errors.append(f"{cmd} : seul un Destructeur (K) peut tirer")
         if action == "SHIELD" and robot.type != "D":
@@ -61,12 +67,27 @@ def run(strategy: Strategy, host: str, port: int, name: str) -> None:
                 strategy.on_game_start(team_id, config)
 
             elif msg_type == "game_state":
+                if conn.has_pending():
+                    # Un message plus récent attend déjà : on a pris du retard
+                    # (stratégie trop lente), inutile de répondre à ce tour.
+                    log.warning("Tour %s ignoré : réponse trop lente "
+                                "(limite : %s s par tour)", msg.get("turn"),
+                                config.get("turn_timeout", "?"))
+                    continue
                 state = GameState(msg, team_id, config)
+                started = time.monotonic()
                 commands = _safe_decide(strategy, state)
+                elapsed = time.monotonic() - started
+                limit = config.get("turn_timeout")
+                if limit and elapsed > limit:
+                    log.warning("Tour %s : decide() a pris %.2f s (limite %s s), "
+                                "commandes probablement ignorées",
+                                state.turn, elapsed, limit)
                 for error in check_commands(state, commands):
                     log.warning("Tour %s : %s", state.turn, error)
                 log.debug("Tour %s : %s", state.turn, commands)
-                conn.send({"type": "commands", "commands": commands})
+                conn.send({"type": "commands", "turn": state.turn,
+                           "commands": commands})
 
             elif msg_type == "turn_result":
                 strategy.on_turn_result(msg.get("turn"), msg.get("data", {}))

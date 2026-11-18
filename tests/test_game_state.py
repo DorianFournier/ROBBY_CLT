@@ -59,3 +59,66 @@ def test_targets_in_range_respect_range_and_shields():
     ])
     k = state.get_robot(13)
     assert {r.id for r in state.targets_in_range(k)} == {21}
+
+
+def test_own_shield_does_not_block_moves_or_shots():
+    state = make_state([
+        robot(12, 1, "D", 5, 5, shield="SR"),   # bouclier allié en (6, 4..6)
+        robot(13, 1, "K", 7, 5),
+        robot(21, 2, "R", 4, 5),
+    ])
+    k = state.get_robot(13)
+    assert state.can_move(k, "L")                         # traverse (6, 5)
+    assert [r.id for r in state.targets_in_range(k)] == [21]
+    assert state.shield_cells() == set()
+    assert (6, 5) in state.shield_cells(only_enemies=False)
+
+
+def test_speed_by_type():
+    state = make_state([robot(11, 1, "R", 1, 7), robot(12, 1, "D", 0, 8),
+                        robot(13, 1, "K", 0, 6)])
+    assert [state.speed(state.get_robot(i)) for i in (11, 12, 13)] == [1, 2, 3]
+
+
+def test_path_towards_uses_full_speed_and_straight_line():
+    state = make_state([robot(13, 1, "K", 2, 7)])
+    k = state.get_robot(13)
+    assert state.path_towards(k, (10, 7)) == ["R", "R", "R"]
+    assert state.path_towards(k, (3, 7)) == ["R"]          # s'arrête sur la cible
+    assert state.path_towards(k, (2, 7)) == []
+
+
+def test_path_towards_goes_around_enemy_shield():
+    state = make_state([
+        robot(13, 1, "K", 4, 5),
+        robot(22, 2, "D", 7, 5, shield="SL"),   # (6, 4), (6, 5), (6, 6)
+    ])
+    k = state.get_robot(13)
+    path = state.path_towards(k, (9, 5))
+    assert state.can_follow(k, path) and len(path) == 3
+    cells, pos = [], k.pos
+    from robby.game_state import step
+    for d in path:
+        pos = step(pos, d)
+        cells.append(pos)
+    assert not {(6, 4), (6, 5), (6, 6)} & set(cells)
+
+
+def test_can_follow_rejects_too_long_or_blocked_paths():
+    state = make_state([robot(11, 1, "R", 1, 7), robot(13, 1, "K", 0, 6)])
+    assert not state.can_follow(state.get_robot(11), ["R", "R"])
+    assert not state.can_follow(state.get_robot(13), ["L"])
+    assert state.can_follow(state.get_robot(13), ["R", "R", "R"])
+
+
+def test_shortest_path_to_blocked_target_gets_as_close_as_possible():
+    state = make_state([
+        robot(13, 1, "K", 2, 7),
+        robot(22, 2, "D", 10, 7, shield="SL"),  # (9, 6), (9, 7), (9, 8)
+    ])
+    path = state.shortest_path((2, 7), (9, 7))
+    pos = (2, 7)
+    for d in path:
+        from robby.game_state import step
+        pos = step(pos, d)
+    assert distance(pos, (9, 7)) == 1

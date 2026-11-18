@@ -20,7 +20,7 @@ def test_example_radar_brings_element_home():
     state = make_state([robot(11, 1, "R", 3, 7, carrying=True)], carried_by=11,
                        element=(3, 7))
     assert MyStrategy().decide(state) == [
-        {"robot_id": 11, "action": "MOVE", "direction": "L"}
+        {"robot_id": 11, "action": "MOVE", "path": ["L"]}
     ]
 
 
