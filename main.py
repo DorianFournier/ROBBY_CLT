@@ -3,6 +3,8 @@
 #   uv run main.py --host 192.168.1.10 --name MonEquipe
 #   uv run main.py --strategy bot2                (bot de référence niveau 2)
 #   uv run main.py --strategy strategy.autre:AutreStrategie
+#   Mode libre (serveur lancé avec --mode libre) :
+#   uv run main.py --strategy strategy.my_free_strategy:MyFreeStrategy
 
 import argparse
 import importlib
@@ -30,8 +32,8 @@ def main():
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--name", default="TEAM", help="nom de votre équipe")
     parser.add_argument("--strategy", default=DEFAULT_STRATEGY,
-                        help="bot1, bot2, bot3 (bots de référence) "
-                             "ou module:Classe de votre stratégie")
+                        help="bot1, bot2, bot3 (bots de référence, pour les deux "
+                             "modes) ou module:Classe de votre stratégie")
     parser.add_argument("-v", "--verbose", action="store_true",
                         help="affiche les commandes envoyées à chaque tour")
     args = parser.parse_args()
