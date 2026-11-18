@@ -167,12 +167,21 @@ class GameState:
             "SD": [(x - 1, y + 1), (x, y + 1), (x + 1, y + 1)],
         }.get(robot.shield_direction, [])
 
-    def shield_cells(self) -> set[Position]:
-        """Cases couvertes par les boucliers VISIBLES (les vôtres et ceux détectés)."""
+    def shield_cells(self, only_enemies: bool = True) -> set[Position]:
+        """
+        Cases couvertes par les boucliers VISIBLES.
+
+        Un bouclier ne bloque que les ennemis de son défenseur : par défaut
+        on ne renvoie donc que les boucliers ENNEMIS (ceux qui vous gênent).
+        `only_enemies=False` renvoie aussi les vôtres.
+        """
         cells = set()
         for r in self.robots:
-            if r.alive and r.type == "D" and r.shield_direction:
-                cells.update(self.shield_cells_of(r))
+            if not (r.alive and r.type == "D" and r.shield_direction):
+                continue
+            if only_enemies and r.team_id == self.team_id:
+                continue
+            cells.update(self.shield_cells_of(r))
         return {c for c in cells if self.is_inside(c)}
 
     def can_move(self, robot: Robot, direction: str) -> bool:
@@ -216,7 +225,7 @@ class GameState:
         return shooter.distance_to(target) <= self.config["destructor_range"]
 
     def is_shot_blocked(self, shooter: Robot, target: Robot) -> bool:
-        """True si un bouclier visible se trouve sur la trajectoire du tir."""
+        """True si un bouclier ennemi visible se trouve sur la trajectoire du tir."""
         shields = self.shield_cells()
         dx, dy = target.x - shooter.x, target.y - shooter.y
         steps = max(abs(dx), abs(dy))
@@ -231,7 +240,7 @@ class GameState:
         return False
 
     def targets_in_range(self, shooter: Robot) -> list[Robot]:
-        """Ennemis visibles à portée et non protégés par un bouclier visible."""
+        """Ennemis visibles à portée et non protégés par un bouclier ennemi visible."""
         return [
             e for e in self.enemies
             if self.in_range(shooter, e) and not self.is_shot_blocked(shooter, e)

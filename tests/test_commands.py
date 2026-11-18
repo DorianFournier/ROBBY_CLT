@@ -31,3 +31,25 @@ def test_check_commands_reports_rule_errors():
     assert len(errors) == 2
     assert len(check_commands(state, [shoot(11, 21)])) == 1  # un radar ne tire pas
     assert check_commands(state, [move(11, "U"), shoot(13, 21)]) == []
+
+
+def test_connection_has_pending():
+    import socket
+
+    from robby.protocol import Connection
+
+    server = socket.socket()
+    server.bind(("127.0.0.1", 0))
+    server.listen()
+    conn = Connection("127.0.0.1", server.getsockname()[1])
+    peer, _ = server.accept()
+    with conn, peer, server:
+        assert not conn.has_pending()
+        peer.sendall(b'{"a": 1}\n{"b": 2}\n')
+        import time
+        time.sleep(0.05)
+        assert conn.has_pending()
+        assert conn.receive() == {"a": 1}
+        assert conn.has_pending()
+        assert conn.receive() == {"b": 2}
+        assert not conn.has_pending()

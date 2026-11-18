@@ -59,3 +59,16 @@ def test_targets_in_range_respect_range_and_shields():
     ])
     k = state.get_robot(13)
     assert {r.id for r in state.targets_in_range(k)} == {21}
+
+
+def test_own_shield_does_not_block_moves_or_shots():
+    state = make_state([
+        robot(12, 1, "D", 5, 5, shield="SR"),   # bouclier allié en (6, 4..6)
+        robot(13, 1, "K", 7, 5),
+        robot(21, 2, "R", 4, 5),
+    ])
+    k = state.get_robot(13)
+    assert state.can_move(k, "L")                         # traverse (6, 5)
+    assert [r.id for r in state.targets_in_range(k)] == [21]
+    assert state.shield_cells() == set()
+    assert (6, 5) in state.shield_cells(only_enemies=False)

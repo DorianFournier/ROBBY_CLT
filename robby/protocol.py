@@ -2,6 +2,7 @@
 # Messages JSON délimités par des retours à la ligne ("\n").
 
 import json
+import select
 import socket
 
 ENCODING = "utf-8"
@@ -27,6 +28,18 @@ class Connection:
             self._buffer += data
         line, _, self._buffer = self._buffer.partition(b"\n")
         return json.loads(line.decode(ENCODING))
+
+    def has_pending(self) -> bool:
+        """True si un autre message complet est déjà arrivé (sans bloquer)."""
+        while b"\n" not in self._buffer:
+            readable, _, _ = select.select([self.sock], [], [], 0)
+            if not readable:
+                return False
+            data = self.sock.recv(4096)
+            if not data:
+                return True  # connexion fermée : receive() renverra None
+            self._buffer += data
+        return True
 
     def close(self) -> None:
         self.sock.close()
