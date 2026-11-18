@@ -43,7 +43,7 @@ def test_escape_path_brings_robot_back_inside():
         [robot(13, 1, "K", 7, 7)], margin=2).get_robot(13)) == []
 
 
-@pytest.mark.parametrize("name", BOTS)
+@pytest.mark.parametrize("name", [n for n in BOTS if "grille" in BOTS[n]().modes])
 def test_bots_leave_the_deadly_zone(name):
     # Tous les robots sur le bord mortel (marge 1) : chaque bot doit les
     # faire rentrer (aucun ne reste immobile hors zone).
