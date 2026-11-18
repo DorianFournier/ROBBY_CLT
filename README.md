@@ -92,6 +92,17 @@ sa graine : pour **rejouer à l'identique** une partie perdue (et comprendre
 pourquoi), relancez le serveur avec `--headless --games 1 --seed <graine>` et
 les mêmes clients.
 
+Pour **revoir** une partie en détail, ajoutez `--record replays` à la commande
+du serveur. Ouvrez ensuite le fichier de la partie avec le lecteur du dépôt
+ROBBY :
+
+```bash
+uv run python -m ui.replay replays/<fichier>.json
+```
+
+Avec `Espace` (pause), `←` / `→` (tour par tour) et `↑` / `↓` (vitesse), vous
+voyez la partie et les commandes envoyées par chaque équipe à chaque tour.
+
 ## Les règles
 
 La carte fait 15 × 15 cases. `x` va de 0 (gauche) à 14, `y` de 0 (**haut**) à 14.
