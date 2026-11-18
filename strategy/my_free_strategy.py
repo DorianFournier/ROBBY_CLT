@@ -1,0 +1,72 @@
+# strategy/my_free_strategy.py
+# =====================================================================
+# VOTRE STRATÉGIE POUR LE MODE LIBRE (V2) — serveur lancé avec --mode libre
+#
+# Les robots ne vont plus de case en case : ils partent dans une direction
+# (un ANGLE en degrés) à une VITESSE donnée.
+#   Angles : 0 = haut, 90 = droite, 180 = bas, 270 = gauche (boussole)
+#   Arène  : 15000 x 15000 unités, y vers le BAS
+#
+# Commandes (au plus UNE par robot et par tour) :
+#   move(robot, angle=90, speed=2000)   vitesse max : R 1000, D 2000, K 5000
+#   shoot(destructeur, angle=45)        rayon de 3000 : touche le 1er ennemi
+#   shield(defenseur, angle=180)        bouclier de 90° tourné vers l'angle
+#
+# Outils utiles de `state` (voir robby/free_state.py et le README) :
+#   state.move_towards(robot, point)    commande toute prête pour y aller
+#   state.targets_in_range(k)           ennemis qu'un tir toucherait
+#   state.shoot_at(k, cible)            commande de tir visée sur la cible
+#   state.aim(k, cible), state.distance(a, b), robot.angle_to(cible)
+#   state.zone_escape(robot)            point sûr si la zone menace le robot
+#   state.firing_spot(k, cible)         où aller pour contourner un bouclier
+#
+# Lancement :
+#   uv run main.py --name Moi --strategy strategy.my_free_strategy:MyFreeStrategy
+# Paliers : battre bot1, puis bot2, puis bot3 (--strategy bot1 ...)
+#
+# Ce squelette ne fait bouger que le Radar. À vous de jouer pour le reste !
+# =====================================================================
+
+from robby import FreeGameState
+from robby.strategy import Strategy
+
+
+class MyFreeStrategy(Strategy):
+    modes = ("libre",)
+
+    def decide(self, state: FreeGameState) -> list[dict]:
+        commands = []
+
+        for robot in state.my_robots:
+            if not robot.can_act:  # pénalisé : sa commande serait ignorée
+                continue
+
+            if robot.type == "R":
+                command = self.play_radar(state, robot)
+            elif robot.type == "K":
+                command = self.play_destructor(state, robot)
+            else:
+                command = self.play_defender(state, robot)
+
+            if command:
+                commands.append(command)
+
+        return commands
+
+    def play_radar(self, state, radar):
+        # Phase 1 : aller chercher la batterie puis la ramener à la base
+        if state.phase == 1:
+            if radar.carrying_element:
+                return state.move_towards(radar, state.my_base)
+            if state.element.is_free:
+                return state.move_towards(radar, state.element.pos)
+        return None
+
+    def play_destructor(self, state, destructor):
+        # TODO : tirer sur un ennemi (state.targets_in_range, state.shoot_at),
+        #        sinon se déplacer... mais où ?
+        return None
+
+    def play_defender(self, state, defender):
+        # TODO : tourner le bouclier vers la menace (shield(d, angle=...)) ?
+        return None

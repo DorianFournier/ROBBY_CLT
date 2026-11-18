@@ -23,7 +23,7 @@ Options :
 | `--host` | adresse du serveur | `127.0.0.1` |
 | `--port` | port du serveur | `8000` |
 | `--name` | nom affiché sur l'écran du serveur (20 caractères max) | `TEAM` |
-| `--strategy` | `bot1`, `bot2`, `bot3` (bots de référence) ou `module:Classe` | `strategy.my_strategy:MyStrategy` |
+| `--strategy` | `bot1`, `bot2`, `bot3` (bots de référence, pour les deux modes) ou `module:Classe` | `strategy.my_strategy:MyStrategy` |
 | `-v` | affiche les commandes envoyées à chaque tour | |
 
 Pour vous entraîner, lancez le serveur en local, puis plusieurs clients dans des
@@ -61,6 +61,12 @@ rétrécit, `bot3` et `bot2` sont à égalité (20 victoires contre 19).
 
 Lire leur code (`bots/level2_rusher.py`, `bots/level3_tactician.py`) est une
 bonne source d'idées... mais pour les battre, il faudra faire mieux !
+
+En **mode libre**, les mêmes options lancent `FreeRandomBot`, `FreeRusherBot`
+et `FreeTacticianBot` (`bots/free_*.py`). Le tacticien contourne les boucliers
+ennemis pour tirer de côté. Mesure faite (30 parties par duel, 10 % d'actions
+au hasard) : bot2 bat bot1 29 fois sur 30, bot3 bat bot1 30 fois sur 30, et
+bot3 bat bot2 23 fois sur 30.
 
 ## S'entraîner sur des dizaines de parties
 
@@ -262,6 +268,75 @@ Chaque `Robot` a les attributs `id`, `team_id`, `type`, `x`, `y`, `pos`,
 Avant chaque envoi, le client vérifie les erreurs évidentes et les affiche en
 `WARNING`. Une exception levée dans votre stratégie est affichée, et vous
 passez simplement le tour : la connexion n'est pas perdue.
+
+## Mode libre (V2) : angle et vitesse
+
+Si le serveur est lancé avec `--mode libre`, les robots ne vont plus de case
+en case : ils partent dans une direction donnée par un **angle**, à la
+**vitesse** de votre choix. Votre client le détecte tout seul. Votre stratégie
+reçoit alors un `FreeGameState`, et un avertissement s'affiche si elle n'est
+écrite que pour l'autre mode.
+
+```bash
+uv run main.py --name Moi --strategy strategy.my_free_strategy:MyFreeStrategy
+```
+
+Pour une stratégie qui sait jouer les deux modes, déclarez
+`modes = ("grille", "libre")` dans sa classe et testez `state.mode`.
+
+### Repère et règles
+
+- Arène de 15000 × 15000 unités, x vers la droite, y vers le **bas**. Une case
+  de la V1 vaut 1000 unités : bases, départs et batterie sont aux mêmes
+  endroits.
+- **Angles en degrés, comme une boussole** : 0 = haut, 90 = droite, 180 = bas,
+  270 = gauche. Pour aller d'un point A à un point B :
+  `angle = math.degrees(math.atan2(bx - ax, -(by - ay))) % 360`, ou plus
+  simplement `robot.angle_to(B)`.
+- Vitesse maximale par tour : Radar 1000, Défenseur 2000, Destructeur 5000.
+- Les robots sont des disques de rayon 300. Un robot s'arrête s'il allait
+  toucher un **ennemi** ou entrer dans un bouclier ennemi. Il traverse ses
+  alliés et glisse le long des bords.
+- **Tir** : un rayon instantané de 3000 unités, tiré depuis la position du
+  début de tour. Il touche le **premier ennemi** sur sa trajectoire, traverse
+  les alliés, et un bouclier ennemi l'arrête.
+- **Bouclier** : une part de tarte de 90° et de rayon 1500, tournée vers
+  l'angle choisi. Il suit le Défenseur.
+- **Vision** : un cercle de rayon 3000 autour de chaque Radar.
+- **Batterie** : un Radar la ramasse en passant à moins de 500 unités, et
+  marque la capture en entrant dans sa base (un disque de rayon 700).
+- Phases, zone, points et pénalités : comme en V1. Une vitesse trop grande,
+  ou une commande sans angle, vaut une pénalité.
+
+### Commandes
+
+```python
+from robby import move, shoot, shield
+
+move(robot, angle=90, speed=2000)   # vers la droite, 2000 unités
+shoot(k, angle=state.aim(k, cible)) # ou : state.shoot_at(k, cible)
+shield(d, angle=180)                # bouclier tourné vers le bas
+```
+
+### Outils de `FreeGameState`
+
+| Méthode | Description |
+|---|---|
+| `state.move_towards(robot, point, stop_at=0)` | commande MOVE toute prête vers un point ou un robot, à la vitesse max sans dépasser le point visé, en s'arrêtant à `stop_at` unités |
+| `state.move_away(robot, menace)` | commande MOVE pour s'éloigner |
+| `state.distance(a, b)`, `robot.distance_to(x)`, `robot.angle_to(x)` | distance à vol d'oiseau, angle |
+| `state.max_speed(robot)` | vitesse maximale du robot |
+| `state.destination(robot, angle, speed)` | point d'arrivée si rien ne gêne |
+| `state.targets_in_range(k)` | ennemis visibles qu'un tir visé sur eux toucherait vraiment |
+| `state.shoot_at(k, cible)`, `state.aim(k, cible)` | commande de tir, angle de tir |
+| `state.first_hit(k, angle)` | ce que toucherait un tir : `(robot ou None, bloqué ?, distance)` |
+| `state.firing_spot(k, cible)` | point atteignable ce tour d'où tirer sur la cible sans être bloqué par un bouclier (pour contourner) |
+| `state.enemy_shields()`, `state.in_enemy_shield(point)` | boucliers ennemis visibles |
+| `state.zone_escape(robot)`, `state.in_zone(point)`, `state.clamp_to_zone(point)` | zone sûre |
+| `state.center`, `state.my_base`, `state.on_base(robot)` | repères |
+
+Les outils de la grille (`path_towards`, `shortest_path`...) n'ont pas de sens
+ici : ils lèvent une erreur qui indique quoi utiliser à la place.
 
 ## Protocole (pour les curieux)
 

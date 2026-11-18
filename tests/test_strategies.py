@@ -53,8 +53,11 @@ def test_strategies_valid_on_random_states(strategy_class, phase):
 
 
 def test_load_strategy_shortcuts():
-    assert type(load_strategy("bot1")).__name__ == "RandomBot"
-    assert type(load_strategy("bot3")).__name__ == "TacticianBot"
+    assert type(load_strategy("bot1").delegate).__name__ == "RandomBot"
+    bot3 = load_strategy("bot3")
+    assert type(bot3.delegate).__name__ == "TacticianBot"
+    bot3.on_game_start(1, {"mode": "libre"})
+    assert type(bot3.delegate).__name__ == "FreeTacticianBot"
     assert isinstance(load_strategy("strategy.my_strategy:MyStrategy"), MyStrategy)
 
 

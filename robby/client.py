@@ -7,15 +7,23 @@ import random
 import time
 import traceback
 
+from robby.free_state import FreeGameState
 from robby.game_state import GameState
+from robby.geometry import is_number
 from robby.protocol import Connection
 from robby.strategy import Strategy
 
 log = logging.getLogger("robby")
 
 
+def state_class(config: dict):
+    """GameState (grille) ou FreeGameState (libre) selon le serveur."""
+    return FreeGameState if config.get("mode") == "libre" else GameState
+
+
 def check_commands(state: GameState, commands: list[dict]) -> list[str]:
     """Erreurs évidentes (qui vaudraient une pénalité). Liste vide si tout va bien."""
+    free = getattr(state, "mode", "grille") == "libre"
     errors = []
     seen = set()
     for cmd in commands:
@@ -29,7 +37,9 @@ def check_commands(state: GameState, commands: list[dict]) -> list[str]:
         if not robot.alive:
             errors.append(f"{cmd} : le robot {robot.id} est détruit")
         action = cmd.get("action")
-        if action == "MOVE":
+        if free:
+            errors += _check_free(state, robot, cmd)
+        elif action == "MOVE":
             path = cmd.get("path", [cmd.get("direction")])
             if not isinstance(path, list) or not 1 <= len(path) <= state.speed(robot):
                 errors.append(f"{cmd} : chemin de 1 à {state.speed(robot)} "
@@ -39,6 +49,28 @@ def check_commands(state: GameState, commands: list[dict]) -> list[str]:
         if action == "SHIELD" and robot.type != "D":
             errors.append(f"{cmd} : seul un Défenseur (D) peut poser un bouclier")
     return errors
+
+
+def _check_free(state, robot, cmd) -> list[str]:
+    action = cmd.get("action")
+    if action not in ("MOVE", "SHOOT", "SHIELD"):
+        return [f"{cmd} : action inconnue"]
+    if not is_number(cmd.get("angle")):
+        return [f"{cmd} : en mode libre, il faut un angle (en degrés)"]
+    if action == "MOVE":
+        speed, limit = cmd.get("speed"), state.max_speed(robot)
+        if not is_number(speed) or not 0 <= speed <= limit:
+            return [f"{cmd} : vitesse de 0 à {limit} pour un {robot.type}"]
+    return []
+
+
+def _warn_mode(strategy, config):
+    mode = config.get("mode", "grille")
+    modes = getattr(strategy, "modes", ("grille",))
+    if mode not in modes:
+        log.warning("Le serveur joue en mode %s, mais cette stratégie est écrite "
+                    "pour le mode %s : ses commandes seront refusées.",
+                    mode, "/".join(modes))
 
 
 def run(strategy_factory, host: str, port: int, name: str) -> None:
@@ -79,6 +111,7 @@ def run(strategy_factory, host: str, port: int, name: str) -> None:
                     # Même graine => mêmes tirages aléatoires => même partie
                     random.seed(f"{seed}:{team_id}")
                 strategy = strategy_factory()
+                _warn_mode(strategy, config)
                 if msg.get("games", 1) > 1:
                     log.info("Partie %s/%s démarrée (équipe %s, graine %s)",
                              msg.get("game"), msg.get("games"), team_id, seed)
@@ -95,7 +128,7 @@ def run(strategy_factory, host: str, port: int, name: str) -> None:
                                 "(limite : %s s par tour)", msg.get("turn"),
                                 config.get("turn_timeout", "?"))
                     continue
-                state = GameState(msg, team_id, config)
+                state = state_class(config)(msg, team_id, config)
                 started = time.monotonic()
                 commands = _safe_decide(strategy, state)
                 elapsed = time.monotonic() - started

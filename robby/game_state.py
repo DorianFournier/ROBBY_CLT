@@ -85,6 +85,8 @@ class GameState:
     (vivants ou morts) et SEULEMENT les ennemis détectés par vos radars.
     """
 
+    mode = "grille"   # FreeGameState : "libre"
+
     def __init__(self, msg: dict, team_id: int, config: dict | None = None):
         self.team_id = team_id
         self.config = {**DEFAULT_CONFIG, **(config or {})}
