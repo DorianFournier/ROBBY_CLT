@@ -7,12 +7,12 @@
 #                Radar doit alors traverser le bouclier).
 #   Radar      : va chercher l'élément puis rentre, mais attend son garde du
 #                corps et recule si un Destructeur ennemi est trop proche
-#                alors qu'il n'est pas protégé. Il ne fait jamais la course en
-#                tête en phase 2.
+#                alors qu'il n'est pas protégé. En phase 2, il tient sa
+#                position : l'ennemi qui approche est vu avant de nous voir.
 #   Destructeur: tire en priorité sur ce qui menace le Radar, sinon sur la
-#                cible qui rapporte le plus. Sans cible, il escorte le Radar
-#                (reste dans sa zone de vision, côté menace) au lieu de partir
-#                seul et aveugle.
+#                cible qui rapporte le plus. Sans cible, il reste sur un flanc
+#                du Radar (dans sa zone de vision) au lieu de partir seul et
+#                aveugle.
 #
 # Les ennemis ne sont visibles que près de VOTRE Radar : un Destructeur qui
 # s'en éloigne ne voit plus rien et ne peut plus tirer. Tout le jeu de ce bot
@@ -179,12 +179,11 @@ class TacticianBot(Strategy):
                     return move(radar, best), step(radar.pos, best)
             return None, radar.pos
 
-        # Phase 2 : le Radar ne passe jamais devant ; il s'arrête à 4 cases
-        # des ennemis connus (sa vision est de 3, la portée K aussi).
+        # Phase 2 : tenir la position. Avec le brouillard de guerre, celui qui
+        # attend voit l'autre arriver en premier : l'ennemi qui approche entre
+        # dans la vision de notre Radar avant que nous soyons dans la sienne.
         if state.phase == 2:
-            known = self.known_enemies()
-            if known and min(distance(m["pos"], radar.pos) for m in known) <= 4:
-                return None, radar.pos
+            return None, radar.pos
 
         # Attendre le garde du corps s'il est loin (sauf porteur de l'élément)
         if defender is not None and defender.distance_to(radar) > 2 \
@@ -260,16 +259,19 @@ class TacticianBot(Strategy):
             taken.add(k.pos)
             return shoot(k, best)
 
-        # Pas de cible : escorter le Radar, côté menace, dans sa zone de vision
+        # Pas de cible : rester sur un flanc du Radar. Tout ce que le Radar
+        # voit (3 cases) est alors presque toujours à portée de tir, et on ne
+        # s'avance jamais là où un ennemi nous verrait sans être vu.
         if radar_dest is not None:
             towards = threat or self.group_goal(state, None)
             if towards == radar_dest:
                 towards = (state.map_width // 2, state.map_height // 2)
             ux, uy = axis_unit(radar_dest, towards)
-            reach = 2 + index  # le 2e K se place un cran plus loin
-            side = (-uy, ux) if index % 2 else (0, 0)
-            goal = clamp(state, (radar_dest[0] + ux * reach + side[0],
-                                 radar_dest[1] + uy * reach + side[1]))
+            px, py = (-uy, ux) if index % 2 == 0 else (uy, -ux)  # flanc gauche/droit
+            goal = (radar_dest[0] + px, radar_dest[1] + py)
+            if not state.is_inside(goal):  # contre un bord : l'autre flanc
+                goal = (radar_dest[0] - px, radar_dest[1] - py)
+            goal = clamp(state, goal)
         else:
             # Radar perdu : chasser à l'aveugle les ennemis mémorisés
             known = self.known_enemies()
