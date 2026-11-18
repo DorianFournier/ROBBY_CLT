@@ -9,16 +9,19 @@
 #   shoot(destructeur, cible)
 #   shield(defenseur, "SU" | "SR" | "SD" | "SL")
 #
-# Outils utiles de `state` (voir robby/game_state.py) :
+# Outils utiles de `state` (voir robby/game_state.py et le README) :
 #   state.my_robots, state.enemies, state.element, state.my_base,
 #   state.phase, state.turn, state.path_towards(robot, (x, y)),
-#   state.possible_moves(robot), state.targets_in_range(robot),
-#   state.nearest(robot, liste_de_robots) ...
+#   state.targets_in_range(robot), state.nearest(robot, liste) ...
 #
-# La stratégie ci-dessous est un EXEMPLE volontairement simple.
+# Paliers : battre bot1, puis bot2, puis bot3 (dossier bots/) :
+#   uv run main.py --name Moi                      (votre stratégie)
+#   uv run main.py --name Adversaire --strategy bot1
+#
+# Ce squelette ne fait bouger que le Radar. À vous de jouer pour le reste !
 # =====================================================================
 
-from robby import GameState, move, shield, shoot
+from robby import GameState, move
 from robby.strategy import Strategy
 
 
@@ -57,27 +60,10 @@ class MyStrategy(Strategy):
         return None
 
     def play_destructor(self, state, destructor):
-        # Tirer sur l'ennemi atteignable le plus proche, sinon s'en approcher
-        targets = state.targets_in_range(destructor)
-        if targets:
-            return shoot(destructor, state.nearest(destructor, targets))
-
-        enemy = state.nearest(destructor, state.enemies)
-        if enemy:
-            path = state.path_towards(destructor, enemy.pos)
-            return move(destructor, *path) if path else None
+        # TODO : tirer sur un ennemi à portée (state.targets_in_range),
+        #        sinon se déplacer... mais où ?
         return None
 
     def play_defender(self, state, defender):
-        # Orienter le bouclier vers l'ennemi visible le plus proche
-        enemy = state.nearest(defender, state.enemies)
-        if not enemy:
-            return None
-        dx, dy = enemy.x - defender.x, enemy.y - defender.y
-        if abs(dx) >= abs(dy):
-            wanted = "SR" if dx > 0 else "SL"
-        else:
-            wanted = "SD" if dy > 0 else "SU"
-        if wanted != defender.shield_direction:
-            return shield(defender, wanted)
+        # TODO : protéger quelqu'un avec le bouclier ?
         return None
