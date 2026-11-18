@@ -6,6 +6,7 @@ import random
 
 from robby import GameState, move, shield, shoot
 from robby.constants import DIRECTIONS, SHIELD_DIRECTIONS
+from robby.game_state import step
 from robby.strategy import Strategy
 
 
@@ -15,6 +16,10 @@ class RandomBot(Strategy):
         commands = []
         for robot in state.my_robots:
             if not robot.can_act:
+                continue
+            escape = state.zone_escape_path(robot)  # jamais de suicide dans la zone
+            if escape:
+                commands.append(move(robot, *escape))
                 continue
             targets = state.targets_in_range(robot) if robot.type == "K" else []
             if targets and random.random() < 0.7:
@@ -29,10 +34,14 @@ class RandomBot(Strategy):
 
     @staticmethod
     def random_path(state: GameState, robot) -> list[str]:
-        """Chemin aléatoire valide de 1 à speed(robot) cases (ou vide)."""
+        """Chemin aléatoire valide de 1 à speed(robot) cases, qui finit dans la
+        zone sûre (ou vide)."""
         for _ in range(20):
             length = random.randint(1, state.speed(robot))
             path = [random.choice(list(DIRECTIONS)) for _ in range(length)]
-            if state.can_follow(robot, path):
+            dest = robot.pos
+            for d in path:
+                dest = step(dest, d)
+            if state.can_follow(robot, path) and state.in_zone(dest, 1):
                 return path
         return []

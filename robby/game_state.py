@@ -98,6 +98,12 @@ class GameState:
         self.map_width: int = self.config["map_width"]
         self.map_height: int = self.config["map_height"]
 
+        # Zone sûre (phase 2) : hors de cette zone en fin de tour, un robot
+        # est détruit. "next_turn" annonce le prochain rétrécissement.
+        self.zone: dict = msg.get("zone") or {
+            "margin": 0, "next_margin": None, "next_turn": None,
+            "safe": [0, 0, self.map_width - 1, self.map_height - 1]}
+
     # ------------------------------------------------------------------
     # Robots
     # ------------------------------------------------------------------
@@ -153,6 +159,75 @@ class GameState:
     @property
     def my_base(self) -> Position:
         return self.base_of(self.team_id)
+
+    # ------------------------------------------------------------------
+    # Zone (phase 2)
+    # ------------------------------------------------------------------
+
+    def zone_margin(self, lookahead: int = 0) -> int:
+        """Anneaux mortels dans `lookahead` tours (0 = maintenant)."""
+        nxt = self.zone.get("next_turn")
+        if nxt is not None and nxt - self.turn <= lookahead:
+            return self.zone["next_margin"]
+        return self.zone.get("margin", 0)
+
+    def in_zone(self, pos: Position, lookahead: int = 0) -> bool:
+        """True si la case est (ou sera dans `lookahead` tours) dans la zone sûre."""
+        m = self.zone_margin(lookahead)
+        return (m <= pos[0] < self.map_width - m
+                and m <= pos[1] < self.map_height - m)
+
+    def clamp_to_zone(self, pos: Position, lookahead: int = 0) -> Position:
+        """Case la plus proche de `pos` dans la zone sûre."""
+        m = self.zone_margin(lookahead)
+        return (min(max(pos[0], m), self.map_width - 1 - m),
+                min(max(pos[1], m), self.map_height - 1 - m))
+
+    def zone_escape_path(self, robot: Robot, lookahead: int = 2,
+                         avoid=(), taken=()) -> list[str]:
+        """
+        Chemin pour rentrer dans la zone sûre si le robot en est (ou en sera
+        dans `lookahead` tours) dehors ; liste vide s'il est déjà à l'abri.
+        Vise la case sûre LIBRE la plus proche, en évitant les cases de
+        `taken` (déjà visées par vos autres robots : deux robots qui visent la
+        même case ne bougent pas !).
+        """
+        if self.in_zone(robot.pos, lookahead):
+            return []
+        center = (self.map_width // 2, self.map_height // 2)
+        limit = self.config["max_robots_per_cell"]
+        blocked = self.shield_cells() | set(avoid)
+        candidates = sorted(
+            ((x, y) for x in range(self.map_width) for y in range(self.map_height)
+             if self.in_zone((x, y), lookahead) and (x, y) not in taken
+             and (x, y) not in blocked and len(self.robots_at((x, y))) < limit),
+            key=lambda c: (distance(robot.pos, c), distance(c, center)),
+        )
+        for cell in candidates[:12]:
+            path = self.shortest_path(robot.pos, cell, avoid)[: self.speed(robot)]
+            if path and self.destination(robot, path) == cell \
+                    and self.can_follow(robot, path, avoid):
+                return path
+        if candidates:  # trop loin pour ce tour : s'en rapprocher
+            path = self.path_towards(robot, candidates[0], avoid)
+            return self.trim_to_free(robot, path, taken)
+        return []
+
+    @staticmethod
+    def destination(robot: Robot, path: list[str]) -> Position:
+        """Case d'arrivée d'un chemin."""
+        pos = robot.pos
+        for d in path:
+            pos = step(pos, d)
+        return pos
+
+    def trim_to_free(self, robot: Robot, path: list[str], taken) -> list[str]:
+        """Raccourcit le chemin pour que sa case d'arrivée ne soit pas dans
+        `taken` (cases déjà visées par vos robots)."""
+        path = list(path)
+        while path and self.destination(robot, path) in taken:
+            path.pop()
+        return path
 
     # ------------------------------------------------------------------
     # Boucliers / déplacements

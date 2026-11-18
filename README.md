@@ -51,13 +51,13 @@ plus fort. Le but est de les battre l'un après l'autre.
 | Option | Bot | Comportement |
 |---|---|---|
 | `bot1` | `RandomBot` | Joue au hasard, mais sans faute de règle. |
-| `bot2` | `RusherBot` | « Fonceur » : le Radar va droit sur l'élément, le Destructeur tire sur l'ennemi le plus proche ou lui fonce dessus et reste près de son Radar s'il ne voit personne, le Défenseur suit le Radar. Aucune prudence, aucune mémoire. |
-| `bot3` | `TacticianBot` | « Tacticien » : le groupe se déplace autour du Radar. Le Défenseur sert de garde du corps (il se place entre le Radar et la menace, bouclier tourné vers elle), le Radar recule s'il est exposé, les Destructeurs restent sur ses flancs (dans sa zone de vision) et choisissent leurs cibles. En phase 2, il tient sa position : avec le brouillard de guerre, celui qui attend voit l'autre arriver en premier. Il mémorise les ennemis et leurs boucliers, même quand ils sortent de la vue. |
+| `bot2` | `RusherBot` | « Fonceur » (ses robots rentrent dans la zone en priorité, sans jamais viser la même case) : le Radar va droit sur l'élément, le Destructeur tire sur l'ennemi le plus proche ou lui fonce dessus et reste près de son Radar s'il ne voit personne, le Défenseur suit le Radar. Aucune prudence, aucune mémoire. |
+| `bot3` | `TacticianBot` | « Tacticien » : le groupe se déplace autour du Radar. Le Défenseur sert de garde du corps (il se place entre le Radar et la menace, bouclier tourné vers elle), le Radar recule s'il est exposé, les Destructeurs restent sur ses flancs (dans sa zone de vision) et choisissent leurs cibles. En phase 2, il prend le centre et le tient : avec le brouillard de guerre, celui qui attend voit l'autre arriver en premier, et la zone qui rétrécit oblige les autres à venir. Il mémorise les ennemis et leurs boucliers, même quand ils sortent de la vue. |
 
-Mesuré sur 60 parties en 1 contre 1 (côtés alternés, avec 10 % d'actions
+Mesuré sur 40 parties en 1 contre 1 (côtés alternés, avec 10 % d'actions
 aléatoires des deux côtés pour que les parties soient toutes différentes) :
-`bot2` bat `bot1` 55 fois, `bot3` bat `bot2` 51 fois et `bot3` bat `bot1`
-52 fois.
+`bot2` et `bot3` battent `bot1` 40 fois sur 40. Depuis l'ajout de la zone qui
+rétrécit, `bot3` et `bot2` sont à égalité (20 victoires contre 19).
 
 Lire leur code (`bots/level2_rusher.py`, `bots/level3_tactician.py`) est une
 bonne source d'idées... mais pour les battre, il faudra faire mieux !
@@ -152,7 +152,9 @@ de l'état du début du tour :
 1. les tirs sont résolus : les robots touchés sont détruits (deux destructeurs
    peuvent s'éliminer mutuellement) ;
 2. les robots survivants suivent leur chemin. Si deux robots visent la même
-   case d'arrivée, aucun des deux ne bouge. Une case accueille au plus 2 robots ;
+   case d'arrivée, aucun des deux ne bouge, **même s'ils sont de la même
+   équipe** : coordonnez vos robots (voir `trim_to_free`). Une case accueille
+   au plus 2 robots ;
 3. les boucliers sont posés.
 
 ### Phase 1 — Capture (100 tours au maximum)
@@ -164,15 +166,25 @@ sa base 5 tours plus tard.
 
 ### Phase 2 — Match à mort (100 tours au maximum)
 
-Les robots détruits **ne réapparaissent plus**. La partie s'arrête quand il ne
-reste qu'une seule équipe ou quand le nombre de tours est atteint.
+Les robots détruits **ne réapparaissent plus**. La partie s'arrête **dès qu'il
+ne reste qu'une seule équipe en vie**. Les 100 tours sont une durée maximale.
+
+**La zone se resserre.** À partir du 20e tour de la phase 2, l'anneau
+extérieur de la carte devient mortel, puis un anneau de plus tous les 8 tours,
+jusqu'à un carré de 3 × 3 au centre. **Un robot hors de la zone sûre à la fin
+d'un tour est détruit.** Le prochain rétrécissement est annoncé :
+`state.zone["next_turn"]`. Pensez à votre Radar, qui n'avance que d'une case
+par tour !
 
 ### Score
 
-C'est le **score total** qui désigne le vainqueur. **Attention : une équipe dont
+**La dernière équipe en vie gagne.** Si plusieurs équipes survivent au bout des
+100 tours, la meilleure au score total parmi elles l'emporte : une équipe
+éliminée ne gagne jamais. **Attention : une équipe dont
 le client se déconnecte (plantage, Ctrl+C...) est disqualifiée**, quel que soit
-son score. Ses robots restent sur la carte et peuvent toujours être détruits. Chaque robot ennemi détruit
-rapporte :
+son score. Ses robots restent sur la carte et peuvent toujours être détruits.
+
+Chaque robot ennemi détruit rapporte :
 
 | Cible | Points |
 |---|---|
@@ -234,6 +246,10 @@ vous informent de ce qui se passe (voir `robby/strategy.py`).
 | `state.speed(robot)` | nombre de cases par tour (K 3, D 2, R 1) |
 | `state.can_follow(robot, chemin)` | le chemin est-il valide d'après ce que vous voyez ? |
 | `state.possible_moves(robot)` | directions valides pour un pas d'une case |
+| `state.in_zone((x, y), lookahead=0)` | la case est-elle dans la zone sûre (maintenant, ou dans `lookahead` tours) ? |
+| `state.zone_escape_path(robot, lookahead=2, taken=...)` | chemin pour rentrer dans la zone sûre vers une case libre (vide si le robot est à l'abri) |
+| `state.destination(robot, chemin)` | case d'arrivée d'un chemin |
+| `state.trim_to_free(robot, chemin, taken)` | raccourcit un chemin pour ne pas viser une case déjà visée par un allié |
 | `state.targets_in_range(k)` | ennemis visibles à portée et non protégés par un bouclier ennemi |
 | `state.nearest(robot, robots)` | le robot le plus proche dans une liste |
 | `state.shield_cells()` | cases couvertes par les boucliers ennemis visibles (`only_enemies=False` : tous) |
