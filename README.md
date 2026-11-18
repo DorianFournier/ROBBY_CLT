@@ -101,7 +101,9 @@ reste qu'une seule équipe ou quand le nombre de tours est atteint.
 
 ### Score
 
-C'est le **score total** qui désigne le vainqueur. Chaque robot ennemi détruit
+C'est le **score total** qui désigne le vainqueur. **Attention : une équipe dont
+le client se déconnecte (plantage, Ctrl+C...) est disqualifiée**, quel que soit
+son score. Ses robots restent sur la carte et peuvent toujours être détruits. Chaque robot ennemi détruit
 rapporte :
 
 | Cible | Points |
