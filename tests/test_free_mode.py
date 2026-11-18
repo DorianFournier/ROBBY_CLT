@@ -9,6 +9,7 @@ import pytest
 from bots import BOTS
 from bots.free_random import FreeRandomBot
 from bots.free_rusher import FreeRusherBot
+from bots.free_simulator import FreeSimulatorBot
 from bots.free_tactician import FreeTacticianBot
 from robby import FreeGameState, GameState, move, shield, shoot
 from robby.client import check_commands, state_class
@@ -16,7 +17,8 @@ from robby.geometry import angle_to, direction
 from strategy.my_free_strategy import MyFreeStrategy
 from tests.helpers import make_free_state, robot
 
-FREE_BOTS = [FreeRandomBot, FreeRusherBot, FreeTacticianBot, MyFreeStrategy]
+FREE_BOTS = [FreeRandomBot, FreeRusherBot, FreeTacticianBot, FreeSimulatorBot,
+             MyFreeStrategy]
 
 
 def test_free_command_factories():

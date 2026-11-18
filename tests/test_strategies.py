@@ -8,7 +8,8 @@ from robby.client import check_commands
 from strategy.my_strategy import MyStrategy
 from tests.helpers import make_state, robot
 
-ALL = [MyStrategy, *BOTS.values()]
+# stratégies qui jouent le mode grille (bot4 ne joue que le mode libre)
+ALL = [MyStrategy, *(b for b in BOTS.values() if "grille" in b().modes)]
 
 
 @pytest.mark.parametrize("strategy_class", ALL)

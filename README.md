@@ -23,7 +23,7 @@ Options :
 | `--host` | adresse du serveur | `127.0.0.1` |
 | `--port` | port du serveur | `8000` |
 | `--name` | nom affiché sur l'écran du serveur (20 caractères max) | `TEAM` |
-| `--strategy` | `bot1`, `bot2`, `bot3` (bots de référence, pour les deux modes) ou `module:Classe` | `strategy.my_strategy:MyStrategy` |
+| `--strategy` | `bot1`, `bot2`, `bot3` (bots de référence, pour les deux modes), `bot4` (mode libre) ou `module:Classe` | `strategy.my_strategy:MyStrategy` |
 | `-v` | affiche les commandes envoyées à chaque tour | |
 
 Pour vous entraîner, lancez le serveur en local, puis plusieurs clients dans des
@@ -67,6 +67,56 @@ et `FreeTacticianBot` (`bots/free_*.py`). Le tacticien contourne les boucliers
 ennemis pour tirer de côté. Mesure faite (30 parties par duel, 10 % d'actions
 au hasard) : bot2 bat bot1 29 fois sur 30, bot3 bat bot1 30 fois sur 30, et
 bot3 bat bot2 23 fois sur 30.
+
+### bot4 : le « simulateur » (mode libre uniquement)
+
+`--strategy bot4` lance `FreeSimulatorBot` (`bots/free_simulator.py`). Il ne
+suit pas des règles fixes : il **essaie des plans** et garde le meilleur.
+À chaque tour :
+
+1. il part du plan du tacticien (bot3) ;
+2. pour chaque robot, il prépare une vingtaine de commandes possibles (rester,
+   8 directions, aller vers la batterie, tirer sur chaque cible, contourner un
+   bouclier, intercepter le porteur, tourner le bouclier vers chaque menace...) ;
+3. il **joue chaque plan dans le simulateur** (`robby/simulator.py`), contre
+   deux hypothèses sur les ennemis : ils restent sur place, ou ils foncent sur
+   lui (leurs Destructeurs tirent sur la meilleure cible qu'ils ont) ;
+4. il **note** chaque résultat : robots perdus et détruits, batterie, danger au
+   tour suivant, occasions de tir, zone, Radar bien entouré ;
+5. il améliore la commande d'un robot à la fois, en gardant les autres, puis
+   recommence. Au plus 260 plans sont évalués, en environ 10 ms par tour.
+
+Il se souvient aussi des ennemis disparus de la vue, et prévoit qu'un porteur
+de batterie invisible rentre vers sa base : il peut l'intercepter ou tirer
+« à l'aveugle » là où il devrait être.
+
+Mesuré sur 40 parties par duel (10 % d'actions au hasard) : bot4 bat bot1
+40 fois sur 40, bot2 34 fois sur 40 et bot3 30 fois sur 40. C'est le dernier
+palier, avant de passer à vos propres idées : changer les poids de
+`evaluate`, ajouter des candidats, prévoir deux tours à l'avance...
+
+### Le simulateur de tour : tester ses coups avant de jouer
+
+`robby/simulator.py` refait les calculs du serveur (mêmes règles, même ordre)
+sur ce que vous voyez. Sur 525 tours de vraies parties, il a donné exactement
+les mêmes positions et les mêmes destructions que le serveur. Vous pouvez
+l'utiliser dans votre propre stratégie :
+
+```python
+from robby.simulator import TurnSimulator
+
+sim = TurnSimulator(state)
+apres = sim.run({state.team_id: mes_commandes,
+                 2: commandes_que_je_prete_a_l_equipe_2})
+apres.deaths                  # robots détruits pendant ce tour
+apres.robot(13).pos           # position de mon K à la fin du tour
+apres.carrier, apres.captured_by
+```
+
+Il ne connaît que ce que vous voyez : un ennemi invisible n'existe pas pour lui,
+sauf si vous l'ajoutez (`TurnSimulator(state, extra=[SimRobot(...)])`). Et il
+ne devine pas les commandes des autres équipes : c'est à vous de faire des
+hypothèses.
 
 ## S'entraîner sur des dizaines de parties
 

@@ -33,7 +33,8 @@ def main():
     parser.add_argument("--name", default="TEAM", help="nom de votre équipe")
     parser.add_argument("--strategy", default=DEFAULT_STRATEGY,
                         help="bot1, bot2, bot3 (bots de référence, pour les deux "
-                             "modes) ou module:Classe de votre stratégie")
+                             "modes), bot4 (mode libre) ou module:Classe "
+                             "de votre stratégie")
     parser.add_argument("-v", "--verbose", action="store_true",
                         help="affiche les commandes envoyées à chaque tour")
     args = parser.parse_args()
