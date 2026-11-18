@@ -40,7 +40,8 @@ def main():
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="[%(name)s] %(levelname)s %(message)s",
     )
-    run(load_strategy(args.strategy), args.host, args.port, args.name)
+    load_strategy(args.strategy)  # erreur immédiate si la stratégie est introuvable
+    run(lambda: load_strategy(args.strategy), args.host, args.port, args.name)
 
 
 if __name__ == "__main__":

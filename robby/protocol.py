@@ -13,6 +13,8 @@ class Connection:
 
     def __init__(self, host: str, port: int, timeout: float | None = None):
         self.sock = socket.create_connection((host, port), timeout=timeout)
+        # Petits messages à chaque tour : pas d'algorithme de Nagle
+        self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         self.sock.settimeout(None)
         self._buffer = b""
 

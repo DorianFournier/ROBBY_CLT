@@ -3,6 +3,7 @@
 # stratégie, envoi des commandes.
 
 import logging
+import random
 import time
 import traceback
 
@@ -40,7 +41,13 @@ def check_commands(state: GameState, commands: list[dict]) -> list[str]:
     return errors
 
 
-def run(strategy: Strategy, host: str, port: int, name: str) -> None:
+def run(strategy_factory, host: str, port: int, name: str) -> None:
+    """
+    Se connecte et joue. `strategy_factory()` crée une stratégie NEUVE au
+    début de chaque partie (une série peut enchaîner plusieurs parties).
+    """
+    strategy = None
+    games_played = 0
     with Connection(host, port, timeout=10) as conn:
         conn.send({"type": "register", "name": name})
         ack = conn.receive()
@@ -56,17 +63,31 @@ def run(strategy: Strategy, host: str, port: int, name: str) -> None:
         while True:
             msg = conn.receive()
             if msg is None:
-                log.warning("Connexion perdue.")
+                if games_played:
+                    log.info("Le serveur a fermé la connexion.")
+                else:
+                    log.warning("Connexion perdue.")
                 return
 
             msg_type = msg.get("type")
 
             if msg_type == "game_start":
                 config = msg.get("config", {})
-                log.info("Partie démarrée !")
+                team_id = msg.get("team_id", team_id)  # la place peut changer
+                seed = msg.get("seed")
+                if seed is not None:
+                    # Même graine => mêmes tirages aléatoires => même partie
+                    random.seed(f"{seed}:{team_id}")
+                strategy = strategy_factory()
+                if msg.get("games", 1) > 1:
+                    log.info("Partie %s/%s démarrée (équipe %s, graine %s)",
+                             msg.get("game"), msg.get("games"), team_id, seed)
+                else:
+                    log.info("Partie démarrée ! (équipe %s, graine %s)",
+                             team_id, seed)
                 strategy.on_game_start(team_id, config)
 
-            elif msg_type == "game_state":
+            elif msg_type == "game_state" and strategy is not None:
                 if conn.has_pending():
                     # Un message plus récent attend déjà : on a pris du retard
                     # (stratégie trop lente), inutile de répondre à ce tour.
@@ -89,12 +110,24 @@ def run(strategy: Strategy, host: str, port: int, name: str) -> None:
                 conn.send({"type": "commands", "turn": state.turn,
                            "commands": commands})
 
-            elif msg_type == "turn_result":
+            elif msg_type == "turn_result" and strategy is not None:
                 strategy.on_turn_result(msg.get("turn"), msg.get("data", {}))
 
-            elif msg_type == "game_over":
-                log.info("Fin de partie : %s", msg)
+            elif msg_type == "game_over" and strategy is not None:
+                games_played += 1
+                winner = msg.get("winner")
+                verdict = ("VICTOIRE" if winner == team_id
+                           else "égalité" if winner is None else "défaite")
+                log.info("Fin de partie : %s — scores %s", verdict,
+                         msg.get("scores"))
                 strategy.on_game_over(msg)
+
+            elif msg_type == "series_over":
+                log.info("Fin de la série (%s parties) :", msg.get("games"))
+                for row in msg.get("ranking", []):
+                    log.info("  %s. %-20s victoires %s/%s  score moyen %s",
+                             row["rank"], row["name"], row["wins"], row["games"],
+                             row["avg_score"])
                 return
 
 
