@@ -7,8 +7,11 @@
 #                Radar doit alors traverser le bouclier).
 #   Radar      : va chercher l'élément puis rentre, mais attend son garde du
 #                corps et recule si un Destructeur ennemi est trop proche
-#                alors qu'il n'est pas protégé. En phase 2, il tient sa
-#                position : l'ennemi qui approche est vu avant de nous voir.
+#                alors qu'il n'est pas protégé. En phase 2, il prend le centre
+#                et le tient : l'ennemi qui approche est vu avant de nous voir,
+#                et la zone qui rétrécit oblige les autres à venir.
+#   Zone       : en phase 2, le Radar rentre dans la zone sûre avec de l'avance
+#                et le groupe se reforme autour de lui.
 #   Destructeur: tire en priorité sur ce qui menace le Radar, sinon sur la
 #                cible qui rapporte le plus. Sans cible, il reste sur un flanc
 #                du Radar (dans sa zone de vision) au lieu de partir seul et
@@ -160,7 +163,15 @@ class TacticianBot(Strategy):
     # ------------------------------------------------------------------
 
     def play_radar(self, state, radar, defender, threat):
-        goal = self.group_goal(state, radar)
+        # Zone (phase 2) : le groupe suit le Radar, il rentre donc en premier,
+        # avec de l'avance (il ne fait qu'une case par tour)
+        escape = state.zone_escape_path(radar, lookahead=3, avoid=self.avoid)
+        if escape:
+            dest = radar.pos
+            for d in escape:
+                dest = step(dest, d)
+            return move(radar, *escape), dest
+        goal = state.clamp_to_zone(self.group_goal(state, radar), 3)
         guarded = defender is not None and defender.distance_to(radar) <= 1
         danger = [e for e in state.enemies
                   if e.type == "K" and radar.distance_to(e) <= 4]
@@ -171,19 +182,26 @@ class TacticianBot(Strategy):
             k = state.nearest(radar, danger)
             options = [d for d in state.possible_moves(radar)
                        if step(radar.pos, d) not in self.avoid]
+            # repli vers la base en phase 1, vers le centre en phase 2 (zone)
+            home = state.my_base if state.phase == 1 else \
+                (state.map_width // 2, state.map_height // 2)
+            options = [d for d in options if state.in_zone(step(radar.pos, d), 2)]
             if options:
                 best = max(options, key=lambda d: (
                     distance(step(radar.pos, d), k.pos),
-                    -distance(step(radar.pos, d), state.my_base)))
+                    -distance(step(radar.pos, d), home)))
                 if distance(step(radar.pos, best), k.pos) > radar.distance_to(k):
                     return move(radar, best), step(radar.pos, best)
             return None, radar.pos
 
-        # Phase 2 : tenir la position. Avec le brouillard de guerre, celui qui
-        # attend voit l'autre arriver en premier : l'ennemi qui approche entre
-        # dans la vision de notre Radar avant que nous soyons dans la sienne.
+        # Phase 2 : prendre le centre puis le tenir. Avec le brouillard de
+        # guerre, celui qui attend voit l'autre arriver en premier ; et comme
+        # la zone rétrécit vers le centre, ce sont les autres qui devront venir.
         if state.phase == 2:
-            return None, radar.pos
+            center = (state.map_width // 2, state.map_height // 2)
+            if radar.distance_to(center) <= 1:
+                return None, radar.pos
+            goal = center
 
         # Attendre le garde du corps s'il est loin (sauf porteur de l'élément)
         if defender is not None and defender.distance_to(radar) > 2 \
@@ -210,6 +228,11 @@ class TacticianBot(Strategy):
         return clamp(state, (radar_dest[0] + ux, radar_dest[1] + uy))
 
     def play_defender(self, state, d, radar_dest, threat, taken):
+        if not state.in_zone(d.pos, 1):
+            path = state.zone_escape_path(d, 1, self.avoid, taken)
+            if path:
+                taken.add(state.destination(d, path))
+                return move(d, *path)
         if radar_dest is None:  # plus de Radar : se battre aux côtés des K
             enemy = state.nearest(d, state.enemies)
             if enemy:
@@ -218,7 +241,7 @@ class TacticianBot(Strategy):
                     return shield(d, wanted)
             return None
 
-        cell = self.guard_cell(state, radar_dest, threat)
+        cell = state.clamp_to_zone(self.guard_cell(state, radar_dest, threat), 2)
         towards = threat or (state.map_width // 2, state.map_height // 2)
         wanted = SHIELD_OF[axis_unit(d.pos if d.pos == cell else cell, towards)] \
             if towards != cell else d.shield_direction
@@ -252,6 +275,12 @@ class TacticianBot(Strategy):
         return value
 
     def play_destructor(self, state, k, radar_dest, threat, taken, index):
+        # Hors zone (maintenant ou au prochain tour) : fuir d'abord, tirer ensuite
+        if not state.in_zone(k.pos, 1):
+            path = state.zone_escape_path(k, 1, self.avoid, taken)
+            if path:
+                taken.add(state.destination(k, path))
+                return move(k, *path)
         targets = state.targets_in_range(k)
         if targets:
             best = max(targets, key=lambda t: (self.target_value(state, t, radar_dest),
@@ -271,7 +300,7 @@ class TacticianBot(Strategy):
             goal = (radar_dest[0] + px, radar_dest[1] + py)
             if not state.is_inside(goal):  # contre un bord : l'autre flanc
                 goal = (radar_dest[0] - px, radar_dest[1] - py)
-            goal = clamp(state, goal)
+            goal = state.clamp_to_zone(clamp(state, goal), 2)
         else:
             # Radar perdu : chasser à l'aveugle les ennemis mémorisés
             known = self.known_enemies()

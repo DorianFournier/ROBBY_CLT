@@ -5,6 +5,7 @@
 #     dessus ; s'il ne voit personne, il reste près de son Radar.
 #   - Défenseur : suit le Radar et tourne son bouclier vers l'ennemi le plus
 #     proche.
+#   - Zone (phase 2) : tout robot hors de la zone sûre y rentre en priorité.
 
 from robby import GameState, move, shield, shoot
 from robby.game_state import Robot
@@ -23,15 +24,31 @@ class RusherBot(Strategy):
 
     def decide(self, state: GameState) -> list[dict]:
         commands = []
-        for robot in state.my_robots:
+        taken = set()  # cases d'arrivée déjà visées par nos robots
+        # Les robots en danger dans la zone choisissent leur case en premier
+        robots = sorted(state.my_robots, key=lambda r: state.in_zone(r.pos, 2))
+        for robot in robots:
             if not robot.can_act:
+                taken.add(robot.pos)
                 continue
-            if robot.type == "R":
+            # Zone (phase 2) : rentrer dans la zone sûre avant tout
+            escape = state.zone_escape_path(robot, lookahead=2, taken=taken)
+            if escape:
+                command = move(robot, *escape)
+            elif robot.type == "R":
                 command = self.radar(state, robot)
             elif robot.type == "K":
                 command = self.destructor(state, robot)
             else:
                 command = self.defender(state, robot)
+            # Deux robots qui visent la même case ne bougent pas : on évite
+            if command and command["action"] == "MOVE":
+                path = state.trim_to_free(robot, command["path"], taken)
+                command = move(robot, *path) if path else None
+            if command and command["action"] == "MOVE":
+                taken.add(state.destination(robot, command["path"]))
+            else:
+                taken.add(robot.pos)
             if command:
                 commands.append(command)
         return commands
@@ -64,7 +81,7 @@ class RusherBot(Strategy):
                 return None
             else:
                 target = (state.map_width // 2, state.map_height // 2)
-        path = state.path_towards(k, target)
+        path = state.path_towards(k, state.clamp_to_zone(target, 2))
         return move(k, *path) if path else None
 
     def defender(self, state, d):
