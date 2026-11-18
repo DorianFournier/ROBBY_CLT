@@ -4,13 +4,14 @@
 #
 # `decide(state)` est appelée à chaque tour et retourne une liste de
 # commandes (au plus UNE par robot) construites avec :
-#   move(robot, "U" | "UR" | "R" | "DR" | "D" | "DL" | "L" | "UL")
+#   move(robot, "U", "UR", ...)   une direction par case parcourue
+#       (U, UR, R, DR, D, DL, L, UL) ; vitesse max : K 3, D 2, R 1 case(s)
 #   shoot(destructeur, cible)
 #   shield(defenseur, "SU" | "SR" | "SD" | "SL")
 #
 # Outils utiles de `state` (voir robby/game_state.py) :
 #   state.my_robots, state.enemies, state.element, state.my_base,
-#   state.phase, state.turn, state.direction_towards(robot, (x, y)),
+#   state.phase, state.turn, state.path_towards(robot, (x, y)),
 #   state.possible_moves(robot), state.targets_in_range(robot),
 #   state.nearest(robot, liste_de_robots) ...
 #
@@ -51,8 +52,8 @@ class MyStrategy(Strategy):
                 target = state.element.pos
             else:
                 return None
-            direction = state.direction_towards(radar, target)
-            return move(radar, direction) if direction else None
+            path = state.path_towards(radar, target)
+            return move(radar, *path) if path else None
         return None
 
     def play_destructor(self, state, destructor):
@@ -63,8 +64,8 @@ class MyStrategy(Strategy):
 
         enemy = state.nearest(destructor, state.enemies)
         if enemy:
-            direction = state.direction_towards(destructor, enemy.pos)
-            return move(destructor, direction) if direction else None
+            path = state.path_towards(destructor, enemy.pos)
+            return move(destructor, *path) if path else None
         return None
 
     def play_defender(self, state, defender):

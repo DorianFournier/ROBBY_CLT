@@ -36,6 +36,7 @@ DEFAULT_CONFIG = {
     "respawn_delay": 5,
     "penalty_turns": 3,
     "kill_points": {"K": 250, "D": 500, "R": 750, "RE": 1000},
+    "move_speed": {"K": 3, "D": 2, "R": 1},  # cases par tour
     "bases": {},
     "teams": {},
 }

@@ -51,11 +51,19 @@ Les distances se comptent en nombre de déplacements, **diagonales comprises** :
 
 Chaque équipe a une **base** au milieu d'un bord de la carte et trois robots :
 
-| Type | Nom | Capacité |
-|---|---|---|
-| `R` | Radar | Détecte les ennemis à 3 cases ou moins. Seul robot pouvant ramasser l'élément. |
-| `D` | Défenseur | Pose un bouclier qui couvre 3 cases sur un côté (`SU`, `SR`, `SD`, `SL`). |
-| `K` | Destructeur | Tire sur un ennemi à 3 cases ou moins. |
+| Type | Nom | Vitesse | Capacité |
+|---|---|---|---|
+| `R` | Radar | 1 case par tour | Détecte les ennemis à 3 cases ou moins. Seul robot pouvant ramasser l'élément. |
+| `D` | Défenseur | 2 cases par tour | Pose un bouclier qui couvre 3 cases sur un côté (`SU`, `SR`, `SD`, `SL`). |
+| `K` | Destructeur | 3 cases par tour | Tire sur un ennemi à 3 cases ou moins. |
+
+### Déplacements
+
+Un déplacement est un **chemin** : une direction par case parcourue, sans
+dépasser la vitesse du robot. Par exemple, `move(k, "R", "R", "UR")` fait
+avancer un K de 3 cases. Chaque case du chemin doit être dans la carte et hors
+des boucliers ennemis. Les robots se croisent librement en chemin : seule la
+case d'arrivée compte (2 robots au maximum par case).
 
 ### Boucliers
 
@@ -83,8 +91,8 @@ de l'état du début du tour :
 
 1. les tirs sont résolus : les robots touchés sont détruits (deux destructeurs
    peuvent s'éliminer mutuellement) ;
-2. les robots survivants se déplacent. Si deux robots visent la même case,
-   aucun des deux ne bouge. Une case accueille au plus 2 robots ;
+2. les robots survivants suivent leur chemin. Si deux robots visent la même
+   case d'arrivée, aucun des deux ne bouge. Une case accueille au plus 2 robots ;
 3. les boucliers sont posés.
 
 ### Phase 1 — Capture (100 tours au maximum)
@@ -121,7 +129,8 @@ ces cas :
 
 - un robot détruit, une action inconnue ou une direction inconnue ;
 - plusieurs commandes pour le même robot dans le même tour ;
-- un déplacement hors de la carte ou sur une case couverte par un bouclier ennemi ;
+- un chemin plus long que la vitesse du robot, qui sort de la carte ou qui
+  traverse une case couverte par un bouclier ennemi ;
 - un tir qui ne vient pas d'un `K`, ou qui vise un allié, une cible morte ou
   une cible hors de portée ;
 - un bouclier posé par un robot qui n'est pas un `D`.
@@ -136,7 +145,9 @@ chaque tour et retourne une liste de commandes :
 ```python
 from robby import move, shoot, shield
 
-move(robot, "UR")        # U, UR, R, DR, D, DL, L, UL
+move(robot, "UR")        # une case : U, UR, R, DR, D, DL, L, UL
+move(k, "R", "R", "DR")  # plusieurs cases (K : 3 max, D : 2 max, R : 1)
+move(k, *chemin)         # chemin = liste de directions
 shoot(destructeur, cible)
 shield(defenseur, "SL")  # SU, SR, SD, SL
 ```
@@ -155,8 +166,11 @@ vous informent de ce qui se passe (voir `robby/strategy.py`).
 | `state.enemies` | ennemis vivants **visibles** |
 | `state.element` | `.pos`, `.is_free`, `.carried_by_id` |
 | `state.my_base`, `state.base_of(team_id)` | positions des bases |
-| `state.possible_moves(robot)` | directions valides d'après ce que vous voyez |
-| `state.direction_towards(robot, (x, y))` | meilleure direction pour s'approcher d'une case |
+| `state.path_towards(robot, (x, y))` | début du plus court chemin vers une case, à la vitesse du robot, en contournant les boucliers ennemis |
+| `state.shortest_path((x0, y0), (x1, y1))` | plus court chemin complet (liste de directions) |
+| `state.speed(robot)` | nombre de cases par tour (K 3, D 2, R 1) |
+| `state.can_follow(robot, chemin)` | le chemin est-il valide d'après ce que vous voyez ? |
+| `state.possible_moves(robot)` | directions valides pour un pas d'une case |
 | `state.targets_in_range(k)` | ennemis visibles à portée et non protégés par un bouclier ennemi |
 | `state.nearest(robot, robots)` | le robot le plus proche dans une liste |
 | `state.shield_cells()` | cases couvertes par les boucliers ennemis visibles (`only_enemies=False` : tous) |

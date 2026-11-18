@@ -4,7 +4,7 @@
 import random
 
 from robby import GameState, move, shield, shoot
-from robby.constants import SHIELD_DIRECTIONS
+from robby.constants import DIRECTIONS, SHIELD_DIRECTIONS
 from robby.strategy import Strategy
 
 
@@ -21,7 +21,17 @@ class RandomStrategy(Strategy):
             elif robot.type == "D" and random.random() < 0.3:
                 commands.append(shield(robot, random.choice(SHIELD_DIRECTIONS)))
             else:
-                moves = state.possible_moves(robot)
-                if moves:
-                    commands.append(move(robot, random.choice(moves)))
+                path = self.random_path(state, robot)
+                if path:
+                    commands.append(move(robot, *path))
         return commands
+
+    @staticmethod
+    def random_path(state: GameState, robot) -> list[str]:
+        """Chemin aléatoire valide de 1 à speed(robot) cases (ou vide)."""
+        for _ in range(20):
+            length = random.randint(1, state.speed(robot))
+            path = [random.choice(list(DIRECTIONS)) for _ in range(length)]
+            if state.can_follow(robot, path):
+                return path
+        return []

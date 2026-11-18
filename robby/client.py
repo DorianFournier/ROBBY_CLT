@@ -28,6 +28,11 @@ def check_commands(state: GameState, commands: list[dict]) -> list[str]:
         if not robot.alive:
             errors.append(f"{cmd} : le robot {robot.id} est détruit")
         action = cmd.get("action")
+        if action == "MOVE":
+            path = cmd.get("path", [cmd.get("direction")])
+            if not isinstance(path, list) or not 1 <= len(path) <= state.speed(robot):
+                errors.append(f"{cmd} : chemin de 1 à {state.speed(robot)} "
+                              f"case(s) maximum pour un {robot.type}")
         if action == "SHOOT" and robot.type != "K":
             errors.append(f"{cmd} : seul un Destructeur (K) peut tirer")
         if action == "SHIELD" and robot.type != "D":

@@ -3,8 +3,9 @@
 #
 # Règles (sinon le robot est pénalisé PENALTY_TURNS tours) :
 #   - une seule commande par robot et par tour
-#   - MOVE   : n'importe quel robot vivant, vers une case de la carte
-#              qui n'est pas couverte par un bouclier
+#   - MOVE   : n'importe quel robot vivant ; au plus MOVE_SPEED cases
+#              (K 3, D 2, R 1), chaque case dans la carte et hors des
+#              boucliers ennemis
 #   - SHOOT  : Destructeur (K) uniquement, cible ennemie vivante à portée
 #   - SHIELD : Défenseur (D) uniquement
 
@@ -15,11 +16,22 @@ def _robot_id(robot) -> int:
     return robot if isinstance(robot, int) else robot.id
 
 
-def move(robot, direction: str) -> dict:
-    """Déplace `robot` d'une case : U, UR, R, DR, D, DL, L, UL."""
-    if direction not in DIRECTIONS:
-        raise ValueError(f"Direction inconnue : {direction!r}")
-    return {"robot_id": _robot_id(robot), "action": "MOVE", "direction": direction}
+def move(robot, *directions: str) -> dict:
+    """
+    Déplace `robot` en suivant une ou plusieurs directions
+    (U, UR, R, DR, D, DL, L, UL), une case par direction.
+
+    Nombre de cases maximal par tour (vitesse) : K 3, D 2, R 1.
+        move(k, "R", "R", "UR")   # le K avance de 3 cases
+        move(r, "U")              # le R avance d'une case
+    On peut aussi passer une liste : move(k, *chemin)
+    """
+    if not directions:
+        raise ValueError("move() demande au moins une direction")
+    for direction in directions:
+        if direction not in DIRECTIONS:
+            raise ValueError(f"Direction inconnue : {direction!r}")
+    return {"robot_id": _robot_id(robot), "action": "MOVE", "path": list(directions)}
 
 
 def shoot(robot, target) -> dict:
