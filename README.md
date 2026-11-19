@@ -70,10 +70,11 @@ Lire leur code (`bots/level2_rusher.py`, `bots/level3_tactician.py`) est une
 bonne source d'idées... mais pour les battre, il faudra faire mieux !
 
 En **mode libre**, les mêmes options lancent `FreeRandomBot`, `FreeRusherBot`
-et `FreeTacticianBot` (`bots/free_*.py`). Le tacticien contourne les boucliers
-ennemis pour tirer de côté. Mesure faite (30 parties par duel, 10 % d'actions
-au hasard) : bot2 bat bot1 29 fois sur 30, bot3 bat bot1 30 fois sur 30, et
-bot3 bat bot2 23 fois sur 30.
+et `FreeTacticianBot` (`bots/free_*.py`). Le tacticien tient le centre du
+prochain cercle, avance derrière son Défenseur, contourne les boucliers ennemis
+pour tirer de côté, ou les use. Mesure faite (30 parties par duel, une commande
+sur dix perdue au hasard) : bot2 bat bot1 29 fois sur 30, bot3 bat bot1
+30 fois sur 30, et bot3 bat bot2 21 fois sur 30.
 
 ### bot4 : le « simulateur » (mode libre uniquement)
 
@@ -88,8 +89,9 @@ suit pas des règles fixes : il **essaie des plans** et garde le meilleur.
 3. il **joue chaque plan dans le simulateur** (`robby/simulator.py`), contre
    deux hypothèses sur les ennemis : ils restent sur place, ou ils foncent sur
    lui (leurs Destructeurs tirent sur la meilleure cible qu'ils ont) ;
-4. il **note** chaque résultat : robots perdus et détruits, batterie, danger au
-   tour suivant, occasions de tir, zone, Radar bien entouré ;
+4. il **note** chaque résultat : robots perdus et détruits, boucliers usés ou
+   brisés, batterie, danger au tour suivant, occasions de tir, zone (et son
+   élan : où il roulera sans nouvelle commande), Radar bien entouré ;
 5. il améliore la commande d'un robot à la fois, en gardant les autres, puis
    recommence. Au plus 260 plans sont évalués, en environ 10 ms par tour.
 
@@ -97,16 +99,16 @@ Il se souvient aussi des ennemis disparus de la vue, et prévoit qu'un porteur
 de batterie invisible rentre vers sa base : il peut l'intercepter ou tirer
 « à l'aveugle » là où il devrait être.
 
-Mesuré sur 40 parties par duel (10 % d'actions au hasard) : bot4 bat bot1
-40 fois sur 40, bot2 34 fois sur 40 et bot3 30 fois sur 40. C'est le dernier
+Mesuré sur 30 parties par duel (une commande sur dix perdue au hasard) : bot4
+bat bot2 26 fois sur 30 et bot3 22 fois sur 30. C'est le dernier
 palier, avant de passer à vos propres idées : changer les poids de
 `evaluate`, ajouter des candidats, prévoir deux tours à l'avance...
 
 ### Le simulateur de tour : tester ses coups avant de jouer
 
 `robby/simulator.py` refait les calculs du serveur (mêmes règles, même ordre)
-sur ce que vous voyez. Sur 525 tours de vraies parties, il a donné exactement
-les mêmes positions et les mêmes destructions que le serveur. Vous pouvez
+sur ce que vous voyez. Sur 1080 tours de vraies parties, il a donné exactement
+les mêmes positions, destructions et boucliers que le serveur. Vous pouvez
 l'utiliser dans votre propre stratégie :
 
 ```python
@@ -199,6 +201,21 @@ quand celui-ci se déplace**. Il ne gêne que les **ennemis** :
 - un robot ennemi ne peut pas entrer sur une case du bouclier ;
 - vos propres robots traversent librement votre bouclier, et vos tirs aussi.
 
+**Le bouclier s'use** (dans les deux modes) :
+
+- il a **3 points de résistance**, et chaque tir ennemi qu'il arrête lui en
+  retire un ;
+- à 0, il **se brise** : il disparaît et ne peut plus être posé pendant
+  **4 tours**, puis il revient entier (une commande `SHIELD` pendant ce temps
+  est sans effet) ;
+- s'il n'est pas touché pendant 3 tours, il regagne 1 point par tour.
+
+Tirer sur un ennemi protégé n'est donc pas inutile : trois tirs et la voie est
+libre, et deux Killers vont deux fois plus vite. `robot.shield_hp`,
+`robot.shield_cooldown` et `robot.shield_ready` vous renseignent (y compris
+sur les Défenseurs ennemis visibles), et `state.shielded_targets(k)` donne les
+ennemis à portée mais derrière un bouclier.
+
 **Brouillard de guerre** : vous ne voyez que vos robots et les ennemis détectés
 par **vos** radars. Un radar détruit, c'est une équipe aveugle.
 
@@ -245,6 +262,11 @@ temps :
 | 1 | 15 tours | 6 cases | 0,5 case par tour | pause 1–15, avancée 16–25 |
 | 2 | 6 tours | 3,5 cases | 0,4 case par tour | pause 26–31, avancée 32–38 |
 | 3 | 6 tours | 1,5 case | 0,3 case par tour | pause 39–44, avancée 45–51 |
+| Épreuve finale | 6 tours | 0 | 0,1 case par tour | pause 52–57, avancée 58–72 |
+
+**L'épreuve finale** : s'il reste plusieurs équipes, la tempête reprend
+lentement jusqu'à ne laisser **aucune place sûre**. Camper ne suffit pas, il
+faut gagner le combat avant.
 
 En mode libre, multipliez par 1000 (une case = 1000 unités).
 

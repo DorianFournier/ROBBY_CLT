@@ -24,6 +24,7 @@ class FreeTacticianBot(Strategy):
 
     def __init__(self):
         self.seen = {}      # robot_id -> (type, position, tour)
+        self.killers = {}   # K ennemis : id -> dernière position (sans limite)
         self.last_known = None   # dernière position ennemie connue (sans limite)
         self.team_id, self.config = None, {}
 
@@ -33,6 +34,7 @@ class FreeTacticianBot(Strategy):
     def on_turn_result(self, turn, result):
         for robot_id in result.get("deaths", []):
             self.seen.pop(robot_id, None)
+            self.killers.pop(robot_id, None)
 
     # ------------------------------------------------------------------
 
@@ -40,6 +42,8 @@ class FreeTacticianBot(Strategy):
         for e in state.enemies:
             self.seen[e.id] = (e.type, e.pos, state.turn)
             self.last_known = e.pos
+            if e.type == "K":
+                self.killers[e.id] = e.pos
         self.seen = {i: v for i, v in self.seen.items() if state.turn - v[2] <= MEMORY}
         self.threats = [(t, p) for t, p, _ in self.seen.values()]
 
@@ -70,17 +74,10 @@ class FreeTacticianBot(Strategy):
         return min(candidates, key=lambda p: state.distance(origin, p))
 
     def hunt_point(self, state):
-        """Phase 2 sans ennemi en vue : dernier ennemi aperçu, sinon la base
-        adverse la plus proche (dans la zone sûre)."""
-        if self.last_known is not None:
-            target = self.last_known
-        else:
-            teams = [int(t) for t in (state.config.get("teams") or {})]
-            bases = [state.base_of(t) for t in teams if t != state.team_id]
-            bases = [b for b in bases if b]
-            target = min(bases, key=lambda b: state.distance(state.safe_center, b)) \
-                if bases else state.safe_center
-        return state.clamp_to_zone(target, 3, inset=1500)
+        """Phase 2 : tenir le centre du prochain cercle. Avec le brouillard de
+        guerre, celui qui attend voit l'autre arriver en premier, et la
+        tempête finit par pousser tout le monde vers ce point."""
+        return state.clamp_to_zone(state.safe_center, 3, inset=1000)
 
     def home(self, state):
         """Point de ralliement : la batterie (phase 1) ou le centre de la zone."""
@@ -91,13 +88,21 @@ class FreeTacticianBot(Strategy):
     # ------------------------------------------------------------------
 
     def play_radar(self, state, radar):
+        # Un K ennemi qui campe reste dangereux même s'il n'est plus visible :
+        # on se souvient de sa dernière position sans limite de temps.
         danger = self.nearest_threat(state, radar, "K")
+        if self.killers and state.phase == 2:
+            remembered = min(self.killers.values(),
+                             key=lambda p: state.distance(radar, p))
+            if danger is None or state.distance(radar, remembered) < \
+                    state.distance(radar, danger):
+                danger = remembered
         threatened = danger and state.distance(radar, danger) < DANGER
         if state.phase == 1 and radar.carrying_element:
             return state.move_towards(radar, state.my_base)
         if threatened:
             defenders = state.my_robots_of_type("D")
-            if defenders:   # se cacher derrière le Défenseur
+            if defenders:   # se cacher derrière le Défenseur (qui avance en phase 2)
                 d = defenders[0]
                 away = d.angle_to(danger)
                 dx, dy = direction((away + 180) % 360) if away is not None else (0, 0)
@@ -115,18 +120,38 @@ class FreeTacticianBot(Strategy):
         target = killers[0].pos if killers else self.home(state)
         return state.move_towards(radar, state.clamp_to_zone(target, 3), stop_at=1500)
 
+    def killer_threat(self, state, origin):
+        """K ennemi le plus proche : visible, récent ou mémorisé (sans limite)."""
+        known = [p for t, p in self.threats if t == "K"] + list(self.killers.values())
+        if not known:
+            return None
+        return min(known, key=lambda p: state.distance(origin, p))
+
     def play_defender(self, state, d):
         protect = self.radar.pos if self.radar else d.pos
-        threat = self.nearest_threat(state, protect, "K") or \
-            self.nearest_threat(state, protect)
+        if state.phase == 2:
+            threat = self.killer_threat(state, protect) or \
+                self.nearest_threat(state, protect)
+        else:
+            threat = self.nearest_threat(state, protect, "K") or \
+                self.nearest_threat(state, protect)
         if threat is None:
             target = self.radar or self.home(state)
             return state.move_towards(d, state.clamp_to_zone(
                 target.pos if hasattr(target, "pos") else target, 2), stop_at=800)
-        wanted = d.angle_to(threat)
+        wanted = d.angle_to(threat) if d.shield_ready else None
         if wanted is not None and (d.shield_direction is None
                                    or angle_diff(wanted, d.shield_direction) > 25):
             return shield(d, angle=wanted)
+        if state.phase == 2 and self.radar is not None:
+            # Avancée escortée : le Défenseur ouvre la route vers la menace,
+            # bouclier devant (il continue de rouler quand il le tourne), à
+            # la vitesse du Radar qui le suit ; il l'attend s'il s'en éloigne.
+            if state.distance(d, self.radar) > 1300:
+                return state.move_towards(d, self.radar, stop_at=700)
+            return state.move_towards(d, state.clamp_to_zone(threat, 2),
+                                      speed=state.max_speed(self.radar),
+                                      stop_at=2200)
         # se placer à 700 du Radar, du côté de la menace (le bouclier suit)
         heading = state.aim(self.radar, threat) if self.radar else None
         if heading is None:
@@ -141,7 +166,12 @@ class FreeTacticianBot(Strategy):
             best = min(targets, key=lambda e: (not e.carrying_element,
                                                PRIORITY[e.type], state.distance(k, e)))
             return state.shoot_at(k, best)
-        # Ennemi visible mais protégé : contourner son bouclier
+        # Ennemi à portée mais derrière un bouclier : tirer quand même l'use, et
+        # il se brise au bout de quelques tirs. Sinon, contourner le bouclier
+        # d'un ennemi visible plus loin pour pouvoir tirer au tour suivant.
+        shielded = state.shielded_targets(k)
+        if shielded:
+            return state.shoot_at(k, min(shielded, key=lambda e: state.distance(k, e)))
         for enemy in sorted(state.enemies, key=lambda e: (PRIORITY[e.type],
                                                           state.distance(k, e))):
             spot = state.firing_spot(k, enemy)

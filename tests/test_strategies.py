@@ -49,7 +49,9 @@ def test_strategies_valid_on_random_states(strategy_class, phase):
             if cmd["action"] == "SHOOT":
                 shooter = state.get_robot(cmd["robot_id"])
                 target = state.get_robot(cmd["target_id"])
-                assert target in state.targets_in_range(shooter)
+                # cible touchable, ou derrière un bouclier (tirer dessus l'use)
+                assert target in (state.targets_in_range(shooter)
+                                  + state.shielded_targets(shooter))
         bot.on_turn_result(turn, {"deaths": []})
 
 

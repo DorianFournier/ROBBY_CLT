@@ -116,3 +116,20 @@ def test_simulated_robots_keep_moving_and_stop_when_blocked():
                                robot(21, 2, "R", 4000, 5000)])
     res = TurnSimulator(blocked).run({})
     assert res.robot(13).speed == 0 and res.robot(13).x < 4000 - 600 + 1
+
+
+def test_simulated_shield_wears_breaks_and_cannot_be_raised():
+    from robby.simulator import TurnSimulator
+    state = make_free_state([robot(13, 1, "K", 4500, 7000),
+                             robot(22, 2, "D", 7000, 7000, shield=270),
+                             robot(21, 2, "R", 7400, 7000)])
+    state.get_robot(22).shield_hp = 2
+    res = TurnSimulator(state).run({1: [shoot(13, angle=90)]})
+    assert res.shield_damage == {22: 1} and res.robot(22).shield_hp == 1
+    state.get_robot(22).shield_hp = 1
+    res = TurnSimulator(state).run({1: [shoot(13, angle=90)],
+                                    2: [{"robot_id": 22, "action": "SHIELD",
+                                         "angle": 0}]})
+    d = res.robot(22)
+    assert res.shield_breaks == [22] and d.shield_direction is None
+    assert d.shield_cooldown == 4 and res.robot(21).alive

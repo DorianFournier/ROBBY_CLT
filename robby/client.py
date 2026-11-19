@@ -48,6 +48,9 @@ def check_commands(state: GameState, commands: list[dict]) -> list[str]:
             errors.append(f"{cmd} : seul un Destructeur (K) peut tirer")
         if action == "SHIELD" and robot.type != "D":
             errors.append(f"{cmd} : seul un Défenseur (D) peut poser un bouclier")
+        elif action == "SHIELD" and getattr(robot, "shield_cooldown", 0) > 0:
+            errors.append(f"{cmd} : bouclier brisé, indisponible encore "
+                          f"{robot.shield_cooldown} tour(s) (commande sans effet)")
     return errors
 
 

@@ -69,6 +69,11 @@ class RusherBot(Strategy):
         targets = state.targets_in_range(k)
         if targets:
             return shoot(k, state.nearest(k, targets))
+        # Ennemi à portée mais derrière un bouclier : tirer quand même l'use,
+        # et il se brise au bout de quelques tirs (anti-blocage)
+        shielded = state.shielded_targets(k)
+        if shielded:
+            return shoot(k, state.nearest(k, shielded))
         enemy = state.nearest(k, state.enemies)
         if enemy:
             target = enemy.pos
@@ -86,7 +91,7 @@ class RusherBot(Strategy):
 
     def defender(self, state, d):
         enemy = state.nearest(d, state.enemies)
-        if enemy:
+        if enemy and d.shield_ready:          # bouclier brisé : indisponible
             wanted = shield_towards(d, enemy.pos)
             if wanted != d.shield_direction:
                 return shield(d, wanted)

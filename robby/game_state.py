@@ -23,6 +23,17 @@ class Robot:
         self.shield_direction: str | None = data.get("shield")
         self.carrying_element: bool = data.get("carrying_element", False)
         self.penalty: int = data.get("penalty", 0)
+        # Bouclier qui s'use (Défenseur) : chaque tir ennemi arrêté retire 1
+        # point ; à 0 il se brise et ne peut pas être reposé pendant
+        # shield_cooldown tours.
+        self.shield_hp: int = data.get("shield_hp", 3)
+        self.shield_cooldown: int = data.get("shield_cooldown", 0)
+        self.shield_quiet: int = data.get("shield_quiet", 0)   # tours sans impact
+
+    @property
+    def shield_ready(self) -> bool:
+        """Le Défenseur peut-il (re)poser son bouclier ce tour-ci ?"""
+        return self.type == "D" and self.shield_cooldown == 0
 
     @property
     def pos(self) -> Position:
@@ -208,7 +219,8 @@ class GameState:
         sûr : distance (à vol d'oiseau) au centre <= rayon."""
         cx, cy = self.storm_center_at(lookahead)
         dist = ((pos[0] - cx) ** 2 + (pos[1] - cy) ** 2) ** 0.5
-        return dist <= self.storm_radius(lookahead) + 1e-9
+        radius = self.storm_radius(lookahead)
+        return radius > 0 and dist <= radius + 1e-9
 
     def clamp_to_zone(self, pos: Position, lookahead: int = 0) -> Position:
         """Case la plus proche de `pos` dans le cercle sûr (pos si elle y est)."""
@@ -429,6 +441,12 @@ class GameState:
             if cell in shields:
                 return True
         return False
+
+    def shielded_targets(self, shooter: Robot) -> list[Robot]:
+        """Ennemis visibles à portée mais protégés par un bouclier : tirer
+        dessus USE ce bouclier (il se brise au bout de shield_hp tirs)."""
+        return [e for e in self.enemies
+                if self.in_range(shooter, e) and self.is_shot_blocked(shooter, e)]
 
     def targets_in_range(self, shooter: Robot) -> list[Robot]:
         """Ennemis visibles à portée et non protégés par un bouclier ennemi visible."""

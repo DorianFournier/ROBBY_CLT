@@ -14,8 +14,9 @@
 #      ennemis : ils restent sur place, ou ils foncent sur nous. Leurs
 #      Destructeurs tirent sur la meilleure cible qu'ils ont.
 #   4. Chaque résultat reçoit une note (evaluate) : robots perdus et
-#      détruits, batterie, danger au tour suivant (un K ennemi pourra-t-il
-#      nous toucher ?), occasions de tir, zone, cohésion autour du Radar.
+#      détruits, boucliers usés ou brisés, batterie, danger au tour suivant
+#      (un K ennemi pourra-t-il nous toucher ?), occasions de tir, zone,
+#      cohésion autour du Radar.
 #   5. Recherche « robot par robot » : on améliore la commande d'un robot
 #      en gardant les autres, puis on recommence (2 passes).
 #
@@ -42,6 +43,8 @@ OPPORTUNITY = 0.35   # part de la valeur d'un ennemi que notre K menace
 ZONE_SOON = 0.5      # hors de la zone du tour prochain
 ZONE_LATER = 0.1     # hors de la zone dans 2 tours
 COAST = 0.2          # sur sa lancée, finirait hors de la zone au tour suivant
+SHIELD_WEAR = 120    # un point retiré à un bouclier ennemi
+SHIELD_BREAK = 350   # bouclier ennemi brisé (indisponible plusieurs tours)
 
 
 class FreeSimulatorBot(Strategy):
@@ -214,8 +217,8 @@ class FreeSimulatorBot(Strategy):
             for d in st.my_robots_of_type("D") + st.my_robots_of_type("K"):
                 cands.append(st.move_towards(robot, d, stop_at=600))
         elif robot.type == "K":
-            for e in st.targets_in_range(robot):
-                cands.append(st.shoot_at(robot, e))
+            for e in st.targets_in_range(robot) + st.shielded_targets(robot):
+                cands.append(st.shoot_at(robot, e))   # derrière un bouclier : l'user
             for g in self.ghosts:
                 if g.carrying_element:   # intercepter le porteur
                     cands.append(st.move_towards(robot, g.pos, stop_at=2000))
@@ -285,6 +288,13 @@ class FreeSimulatorBot(Strategy):
                 gain = ENEMY_VALUE[r.type] + (CARRIER_BONUS if before.carrying_element
                                               else 0)
                 value += gain * (0.5 if r.ghost else 1.0)
+
+        # --- 1 bis. boucliers usés ou brisés (anti-blocage)
+        for did, damage in res.shield_damage.items():
+            sign = -1 if res.robots[did].team_id == me else 1
+            value += sign * SHIELD_WEAR * damage
+            if did in res.shield_breaks:
+                value += sign * SHIELD_BREAK
 
         # --- 2. batterie (phase 1)
         if st.phase == 1:
