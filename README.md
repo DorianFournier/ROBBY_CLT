@@ -279,6 +279,7 @@ client affiche pourquoi.
 | `state.turn`, `state.phase`, `state.phase_turn` | numéro du tour, de la phase (1 ou 2), du tour dans la phase |
 | `state.my_robots`, `state.my_robots_of_type("K")` | vos robots vivants |
 | `state.enemies` | ennemis vivants **visibles** |
+| `state.scores`, `state.my_score`, `state.lead` | scores de toutes les équipes (publics), le vôtre, et votre avance sur la meilleure équipe adverse (négative si vous êtes en retard) |
 | `state.elements` | les batteries : `.pos`, `.is_free` (posée au sol, à prendre), `.carried_by_id`, `.present` (`False` pendant qu'une batterie capturée réapparaît) |
 | `state.nearest_battery(robot)` | batterie libre la plus proche, ou `None` |
 | `state.free_batteries` | batteries posées au sol |

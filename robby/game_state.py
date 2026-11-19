@@ -123,6 +123,8 @@ class GameState:
     (vivants ou morts) et SEULEMENT les ennemis détectés par vos radars.
 
     Outils principaux :
+        state.scores, state.my_score         scores de toutes les équipes, le vôtre
+        state.lead                           avance sur le meilleur adversaire
         state.nearest_battery(robot)         batterie libre la plus proche (ou None)
         state.free_batteries                 batteries posées au sol, à prendre
         state.move_towards(robot, point)     commande pour aller vers un point
@@ -151,6 +153,9 @@ class GameState:
         # state.element est la première (la seule à 2 équipes).
         self.elements = [Element(e) for e in (msg.get("elements") or [msg["element"]])]
         self.element = self.elements[0]
+        # Scores de toutes les équipes (publics, comme à l'écran)
+        self.scores: dict[int, int] = {int(t): s for t, s in
+                                       (msg.get("scores") or {}).items()}
         self.robots = [Robot(r) for r in msg.get("robots", [])]
 
         self.map_width: float = c["map_width"]
@@ -188,6 +193,16 @@ class GameState:
 
     def get_robot(self, robot_id: int) -> Robot | None:
         return next((r for r in self.robots if r.id == robot_id), None)
+
+    @property
+    def my_score(self) -> int:
+        return self.scores.get(self.team_id, 0)
+
+    @property
+    def lead(self) -> int:
+        """Avance au score sur la meilleure équipe adverse (négatif : en retard)."""
+        others = [s for t, s in self.scores.items() if t != self.team_id]
+        return self.my_score - max(others, default=0)
 
     @property
     def free_batteries(self) -> list[Element]:
