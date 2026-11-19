@@ -201,3 +201,19 @@ def test_keep_safe_refuses_to_coast_into_the_storm():
     k.heading = 180                                    # vers le centre : sans danger
     shot = state.shoot_at(k, state.get_robot(23))
     assert state.keep_safe(k, shot) == shot
+
+
+def test_shielded_targets_and_shield_ready():
+    state = make_free_state([robot(13, 1, "K", 4500, 7000),
+                             robot(22, 2, "D", 7000, 7000, shield=270),
+                             robot(21, 2, "R", 7400, 7000)])
+    k, d = state.get_robot(13), state.get_robot(22)
+    assert state.targets_in_range(k) == []
+    assert {e.id for e in state.shielded_targets(k)} == {21, 22}
+    assert d.shield_ready and d.shield_hp == 3
+    broken = make_free_state([robot(12, 1, "D", 5000, 5000, shield=None)])
+    d = broken.get_robot(12)
+    d.shield_cooldown = 2
+    assert not d.shield_ready
+    errors = check_commands(broken, [shield(12, angle=0)])
+    assert errors and "brisé" in errors[0]

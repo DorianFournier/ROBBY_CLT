@@ -237,7 +237,7 @@ class TacticianBot(Strategy):
             enemy = state.nearest(d, state.enemies)
             if enemy:
                 wanted = SHIELD_OF[axis_unit(d.pos, enemy.pos)]
-                if wanted != d.shield_direction:
+                if wanted != d.shield_direction and d.shield_ready:
                     return shield(d, wanted)
             return None
 
@@ -248,7 +248,7 @@ class TacticianBot(Strategy):
 
         if d.pos == cell or (d.distance_to(cell) <= 1 and cell in taken):
             taken.add(d.pos)
-            if wanted and wanted != d.shield_direction:
+            if wanted and wanted != d.shield_direction and d.shield_ready:
                 return shield(d, wanted)
             return None
 
@@ -256,7 +256,7 @@ class TacticianBot(Strategy):
         path = self.avoid_taken(d, path, taken)
         if not path:
             taken.add(d.pos)
-            if wanted and wanted != d.shield_direction:
+            if wanted and wanted != d.shield_direction and d.shield_ready:
                 return shield(d, wanted)
             return None
         return move(d, *path)
@@ -287,6 +287,12 @@ class TacticianBot(Strategy):
                                                -k.distance_to(t)))
             taken.add(k.pos)
             return shoot(k, best)
+        # Ennemi à portée mais derrière un bouclier : tirer quand même l'use,
+        # et il se brise au bout de quelques tirs (anti-blocage)
+        shielded = state.shielded_targets(k)
+        if shielded and state.phase == 2:
+            taken.add(k.pos)
+            return shoot(k, state.nearest(k, shielded))
 
         # Pas de cible : rester sur un flanc du Radar. Tout ce que le Radar
         # voit (3 cases) est alors presque toujours à portée de tir, et on ne

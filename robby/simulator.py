@@ -50,6 +50,9 @@ class SimRobot:
     ghost: bool = False          # ennemi supposé (mémoire), pas vu ce tour
     heading: float | None = None   # cap gardé d'un tour à l'autre
     speed: float = 0               # vitesse gardée d'un tour à l'autre
+    shield_hp: int = 3             # résistance du bouclier
+    shield_cooldown: int = 0       # tours avant de pouvoir le reposer
+    shield_quiet: int = 0          # tours sans impact (recharge)
 
     @property
     def pos(self):
@@ -63,6 +66,8 @@ class SimResult:
     killers: dict = field(default_factory=dict)    # id détruit -> équipe du tireur
     zone_deaths: list = field(default_factory=list)
     shots: list = field(default_factory=list)      # (tireur, cible ou None, bloqué)
+    shield_damage: dict = field(default_factory=dict)  # id du D -> points perdus
+    shield_breaks: list = field(default_factory=list)  # boucliers brisés
     carrier: int | None = None                     # porteur de la batterie
     battery: tuple = (0.0, 0.0)
     captured_by: int | None = None                 # équipe qui a marqué la capture
@@ -89,11 +94,17 @@ class TurnSimulator:
         self.pickup = c["pickup_radius"]
         self.base_radius = c["base_radius"]
         self.speed = c["move_speed"]
+        self.shield_break_turns = c.get("shield_break_turns", 4)
+        self.shield_max = c.get("shield_hp", 3)
+        self.shield_delay = c.get("shield_recharge_delay", 3)
         self.width, self.height = state.map_width, state.map_height
         self.robots = [SimRobot(r.id, r.team_id, r.type, r.x, r.y, r.alive,
                                 r.shield_direction, r.carrying_element, r.penalty,
                                 heading=getattr(r, "heading", None),
-                                speed=getattr(r, "speed", 0) or 0)
+                                speed=getattr(r, "speed", 0) or 0,
+                                shield_hp=getattr(r, "shield_hp", 3),
+                                shield_cooldown=getattr(r, "shield_cooldown", 0),
+                                shield_quiet=getattr(r, "shield_quiet", 0))
                        for r in state.robots]
         self.robots += list(extra)
 
@@ -107,22 +118,48 @@ class TurnSimulator:
                 if r.alive and r.type == "D" and r.shield_direction is not None
                 and r.team_id != against_team]
 
+    def _recharge_shields(self, robots, hit):
+        """Fin de tour, comme le serveur : fin de l'indisponibilité (bouclier
+        comme neuf), ou +1 point après shield_recharge_delay tours sans impact."""
+        for d in robots.values():
+            if d.type != "D":
+                continue
+            if d.shield_cooldown > 0:
+                d.shield_cooldown -= 1
+                if d.shield_cooldown == 0:
+                    d.shield_hp, d.shield_quiet = self.shield_max, 0
+                continue
+            if d.id not in hit:
+                d.shield_quiet += 1
+                if (d.shield_quiet >= self.shield_delay
+                        and d.shield_hp < self.shield_max):
+                    d.shield_hp += 1
+
     def first_hit(self, robots, shooter, angle, origin=None):
         """(robot touché ou None, bloqué ?) pour un tir depuis `origin`."""
+        hit, shield = self.shot_outcome(robots, shooter, angle, origin)
+        return hit, shield is not None
+
+    def shot_outcome(self, robots, shooter, angle, origin=None):
+        """(robot touché ou None, Défenseur dont le bouclier arrête le tir ou
+        None) : le bouclier le plus proche sur la trajectoire, comme le serveur."""
         start = shooter.pos if origin is None else origin
-        reach, hit = self.range, None
+        reach, hit, shield = self.range, None, None
         for r in robots.values():
             if not r.alive or r.team_id == shooter.team_id:
                 continue
             t = ray_circle(start, angle, reach, r.pos, self.radius)
             if t is not None and t < reach:
                 reach, hit = t, r
-        for center, heading in self._shields(robots, shooter.team_id):
-            t = ray_sector(start, angle, reach, center, self.shield_radius,
-                           heading, self.shield_arc)
+        for d in robots.values():
+            if not (d.alive and d.type == "D" and d.shield_direction is not None
+                    and d.team_id != shooter.team_id):
+                continue
+            t = ray_sector(start, angle, reach, d.pos, self.shield_radius,
+                           d.shield_direction, self.shield_arc)
             if t is not None and t <= reach:
-                return None, True
-        return hit, False
+                reach, hit, shield = t, None, d
+        return hit, shield
 
     # ------------------------------------------------------------------
 
@@ -151,7 +188,8 @@ class TurnSimulator:
                 elif action == "SHOOT" and r.type == "K":
                     shots.append((r, angle))
                 elif action == "SHIELD" and r.type == "D":
-                    shields[r.id] = angle
+                    if r.shield_cooldown == 0:      # brisé : sans effet
+                        shields[r.id] = round(angle, 2)   # comme le serveur
                 else:
                     r.penalty = 1
 
@@ -159,10 +197,22 @@ class TurnSimulator:
 
         # 1. tirs (positions du début de tour), puis morts
         for shooter, angle in shots:
-            hit, blocked = self.first_hit(robots, shooter, angle)
-            result.shots.append((shooter.id, hit.id if hit else None, blocked))
+            hit, shield = self.shot_outcome(robots, shooter, angle)
+            result.shots.append((shooter.id, hit.id if hit else None,
+                                 shield is not None))
             if hit is not None and hit.id not in result.killers:
                 result.killers[hit.id] = shooter.team_id
+            if shield is not None:   # le bouclier s'use
+                result.shield_damage[shield.id] = result.shield_damage.get(shield.id,
+                                                                           0) + 1
+        for did, damage in result.shield_damage.items():
+            d = robots[did]
+            d.shield_hp -= damage
+            d.shield_quiet = 0
+            if d.shield_hp <= 0:     # brisé : retiré, indisponible quelques tours
+                d.shield_hp, d.shield_direction = 0, None
+                d.shield_cooldown = self.shield_break_turns + 1   # -1 en fin de tour
+                result.shield_breaks.append(did)
         carrier = st.element.carried_by_id
         battery = st.element.pos
         for rid in result.killers:
@@ -253,8 +303,9 @@ class TurnSimulator:
 
         # boucliers
         for rid, angle in shields.items():
-            if robots[rid].alive:
+            if robots[rid].alive and robots[rid].shield_cooldown == 0:
                 robots[rid].shield_direction = angle
+        self._recharge_shields(robots, result.shield_damage)
 
         # zone : hors de la zone sûre en fin de tour = détruit
         if st.phase == 2:

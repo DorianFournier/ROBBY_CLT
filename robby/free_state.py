@@ -83,6 +83,8 @@ class FreeGameState(GameState):
         state.zone_escape(robot)             point sûr si le robot est en danger
         state.safe_center                    centre du prochain cercle annoncé
         state.firing_spot(k, cible)          où aller pour contourner un bouclier
+        state.shielded_targets(k)            ennemis derrière un bouclier : tirer
+                                             dessus l'use, puis le brise
     """
 
     mode = "libre"
@@ -222,7 +224,8 @@ class FreeGameState(GameState):
         """Le point est-il (dans `lookahead` tours) à plus de `inset` unités à
         l'intérieur du cercle sûr ?"""
         center = self.storm_center_at(lookahead)
-        return distance(pos, center) <= self.storm_radius(lookahead) - inset
+        radius = self.storm_radius(lookahead)
+        return radius > 0 and distance(pos, center) <= radius - inset
 
     def clamp_to_zone(self, pos, lookahead: int = 0, inset: float | None = None):
         """Point le plus proche de `pos` dans le cercle sûr (avec une marge)."""
@@ -330,6 +333,18 @@ class FreeGameState(GameState):
         ennemi visible, ou autre ennemi devant)."""
         hit, _, _ = self.first_hit(shooter, self.aim(shooter, target))
         return hit is not target
+
+    def shielded_targets(self, shooter) -> list:
+        """Ennemis visibles à portée, mais derrière un bouclier ennemi : tirer
+        dessus USE ce bouclier (il se brise au bout de shield_hp tirs)."""
+        result = []
+        for e in self.enemies:
+            if not self.in_range(shooter, e):
+                continue
+            _, blocked, _ = self.first_hit(shooter, self.aim(shooter, e))
+            if blocked:
+                result.append(e)
+        return result
 
     def targets_in_range(self, shooter) -> list:
         """Ennemis visibles qu'un tir visé sur eux toucherait vraiment."""

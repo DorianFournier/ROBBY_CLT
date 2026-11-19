@@ -39,6 +39,9 @@ DEFAULT_CONFIG = {
     "move_speed": {"K": 3, "D": 2, "R": 1},  # cases par tour
     "capture_points": 0,   # bonus pour avoir ramené l'élément
     "survivor_points": 0,  # bonus par robot en vie en fin de partie
+    "shield_hp": 3,             # résistance d'un bouclier (tirs arrêtés)
+    "shield_break_turns": 4,    # tours sans bouclier quand il est brisé
+    "shield_recharge_delay": 3, # tours sans impact avant de regagner 1 point
     "bases": {},
     "teams": {},
 }

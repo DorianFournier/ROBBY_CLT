@@ -50,6 +50,11 @@ class FreeRusherBot(Strategy):
         targets = state.targets_in_range(k)
         if targets:
             return state.shoot_at(k, state.nearest(k, targets))
+        # Ennemi à portée mais derrière un bouclier : tirer quand même l'use,
+        # et il se brise au bout de quelques tirs (anti-blocage)
+        shielded = state.shielded_targets(k)
+        if shielded:
+            return state.shoot_at(k, state.nearest(k, shielded))
         enemy = state.nearest(k, state.enemies)
         if enemy:
             return state.move_towards(k, state.clamp_to_zone(enemy.pos, 2),
@@ -62,7 +67,7 @@ class FreeRusherBot(Strategy):
 
     def defender(self, state, d):
         enemy = state.nearest(d, state.enemies)
-        if enemy:
+        if enemy and d.shield_ready:          # bouclier brisé : indisponible
             wanted = d.angle_to(enemy)
             if wanted is not None and (d.shield_direction is None
                                        or angle_diff(wanted, d.shield_direction) > 20):

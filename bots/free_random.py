@@ -27,7 +27,7 @@ class FreeRandomBot(Strategy):
             if targets and random.random() < 0.7:
                 commands.append(state.keep_safe(
                     robot, state.shoot_at(robot, random.choice(targets))))
-            elif robot.type == "D" and random.random() < 0.3:
+            elif robot.shield_ready and random.random() < 0.3:
                 commands.append(state.keep_safe(
                     robot, shield(robot, angle=random.uniform(0, 360))))
             else:
