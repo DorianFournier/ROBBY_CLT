@@ -64,6 +64,7 @@ class FreeGameState(GameState):
         state.aim(k, cible)                  angle de tir vers une cible
         state.targets_in_range(k)            ennemis qu'un tir toucherait
         state.zone_escape(robot)             point sûr si le robot est en danger
+        state.safe_center                    centre du prochain cercle annoncé
         state.firing_spot(k, cible)          où aller pour contourner un bouclier
     """
 
@@ -170,13 +171,14 @@ class FreeGameState(GameState):
     def in_zone(self, pos, lookahead: int = 0, inset: float = 0.0) -> bool:
         """Le point est-il (dans `lookahead` tours) à plus de `inset` unités à
         l'intérieur du cercle sûr ?"""
-        return distance(pos, self.storm_center) <= self.storm_radius(lookahead) - inset
+        center = self.storm_center_at(lookahead)
+        return distance(pos, center) <= self.storm_radius(lookahead) - inset
 
     def clamp_to_zone(self, pos, lookahead: int = 0, inset: float | None = None):
         """Point le plus proche de `pos` dans le cercle sûr (avec une marge)."""
         inset = self.robot_radius if inset is None else inset
         radius = max(0.0, self.storm_radius(lookahead) - inset)
-        center = self.storm_center
+        center = self.storm_center_at(lookahead)
         d = distance(pos, center)
         if d <= radius:
             return (pos[0], pos[1])

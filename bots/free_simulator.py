@@ -83,7 +83,8 @@ class FreeSimulatorBot(Strategy):
         self.scenarios = self.enemy_scenarios()
         self.hunt = self.scout.hunt_point(state) if state.phase == 2 else None
         if self.hunt is None and not state.my_robots_of_type("R"):
-            self.hunt = state.clamp_to_zone(state.center, 3)   # aveugles : on cherche
+            # aveugles : on cherche vers le prochain cercle
+            self.hunt = state.clamp_to_zone(state.safe_center, 3)
         self.evals = 0
 
         actors = [r for r in state.my_robots if r.can_act]

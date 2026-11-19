@@ -156,7 +156,7 @@ class TacticianBot(Strategy):
         bases = [b for b in bases if b]
         if bases:
             return min(bases, key=lambda b: distance(b, origin))
-        return (state.map_width // 2, state.map_height // 2)
+        return state.safe_cell
 
     # ------------------------------------------------------------------
     # Radar
@@ -184,7 +184,7 @@ class TacticianBot(Strategy):
                        if step(radar.pos, d) not in self.avoid]
             # repli vers la base en phase 1, vers le centre en phase 2 (zone)
             home = state.my_base if state.phase == 1 else \
-                (state.map_width // 2, state.map_height // 2)
+                state.safe_cell
             options = [d for d in options if state.in_zone(step(radar.pos, d), 2)]
             if options:
                 best = max(options, key=lambda d: (
@@ -198,7 +198,7 @@ class TacticianBot(Strategy):
         # guerre, celui qui attend voit l'autre arriver en premier ; et comme
         # la zone rétrécit vers le centre, ce sont les autres qui devront venir.
         if state.phase == 2:
-            center = (state.map_width // 2, state.map_height // 2)
+            center = state.safe_cell
             if radar.distance_to(center) <= 1:
                 return None, radar.pos
             goal = center
@@ -221,7 +221,7 @@ class TacticianBot(Strategy):
     # ------------------------------------------------------------------
 
     def guard_cell(self, state, radar_dest, threat) -> Position:
-        towards = threat or (state.map_width // 2, state.map_height // 2)
+        towards = threat or state.safe_cell
         if towards == radar_dest:
             towards = state.my_base
         ux, uy = axis_unit(radar_dest, towards)
@@ -242,7 +242,7 @@ class TacticianBot(Strategy):
             return None
 
         cell = state.clamp_to_zone(self.guard_cell(state, radar_dest, threat), 2)
-        towards = threat or (state.map_width // 2, state.map_height // 2)
+        towards = threat or state.safe_cell
         wanted = SHIELD_OF[axis_unit(d.pos if d.pos == cell else cell, towards)] \
             if towards != cell else d.shield_direction
 
@@ -294,7 +294,7 @@ class TacticianBot(Strategy):
         if radar_dest is not None:
             towards = threat or self.group_goal(state, None)
             if towards == radar_dest:
-                towards = (state.map_width // 2, state.map_height // 2)
+                towards = state.safe_cell
             ux, uy = axis_unit(radar_dest, towards)
             px, py = (-uy, ux) if index % 2 == 0 else (uy, -ux)  # flanc gauche/droit
             goal = (radar_dest[0] + px, radar_dest[1] + py)

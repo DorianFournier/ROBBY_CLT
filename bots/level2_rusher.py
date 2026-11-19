@@ -80,7 +80,7 @@ class RusherBot(Strategy):
             elif radars:
                 return None
             else:
-                target = (state.map_width // 2, state.map_height // 2)
+                target = state.safe_cell
         path = state.path_towards(k, state.clamp_to_zone(target, 2))
         return move(k, *path) if path else None
 

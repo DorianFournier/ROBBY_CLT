@@ -248,6 +248,12 @@ temps :
 
 En mode libre, multipliez par 1000 (une case = 1000 unités).
 
+Par défaut, tous les cercles sont centrés sur la carte. Si le serveur est lancé
+avec `--storm aleatoire`, chaque nouveau cercle est tiré au hasard **à
+l'intérieur du précédent**, et pendant l'avancée le cercle glisse vers son
+nouveau centre. Regardez donc où le prochain cercle est annoncé
+(`state.safe_center`) plutôt que de foncer vers le milieu de la carte !
+
 **Un robot dont le centre est hors du cercle à la fin d'un tour est détruit.**
 Le cercle est rond : les coins tombent avant le milieu des bords. La tempête
 avance moins vite que le Radar, mais il n'avance que d'une case (1000 unités)
@@ -257,7 +263,9 @@ Ce que vous savez de la tempête (`state.zone`, envoyé à chaque tour) :
 
 | Clé | Contenu |
 |---|---|
-| `center` | centre du cercle |
+| `center` | centre du cercle à la fin de ce tour |
+| `forecast_centers` | centres des prochains tours (le centre bouge avec `--storm aleatoire`) |
+| `target_center` | centre du prochain cercle annoncé |
 | `radius` | rayon sûr à la **fin de ce tour** |
 | `forecast` | rayons des prochains tours (`forecast[2]` : dans 2 tours) |
 | `state` | `"calm"` (phase 1), `"pause"`, `"shrink"` (elle avance) ou `"final"` |
@@ -266,8 +274,9 @@ Ce que vous savez de la tempête (`state.zone`, envoyé à chaque tour) :
 
 Le plus simple est d'utiliser les outils : `state.in_zone(position,
 lookahead)` (sera-t-on à l'abri dans `lookahead` tours ?),
-`state.storm_radius(lookahead)`, `state.clamp_to_zone(position)` (le point sûr
-le plus proche), `state.zone_escape_path(robot)` (grille) et
+`state.storm_radius(lookahead)`, `state.storm_center_at(lookahead)`,
+`state.safe_center` (centre du prochain cercle : où se regrouper),
+`state.clamp_to_zone(position)` (le point sûr le plus proche), `state.zone_escape_path(robot)` (grille) et
 `state.zone_escape(robot)` (libre).
 
 ### Score
