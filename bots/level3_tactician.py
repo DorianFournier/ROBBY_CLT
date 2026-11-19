@@ -79,9 +79,11 @@ class TacticianBot(Strategy):
         return state.clamp_to_zone(state.safe_center, 3, inset=1000)
 
     def home(self, state):
-        """Point de ralliement : la batterie (phase 1) ou le centre de la zone."""
-        if state.phase == 1 and state.element.is_free:
-            return state.element.pos
+        """Point de ralliement : la batterie la plus proche de notre base
+        (phase 1) ou le centre de la zone."""
+        battery = state.nearest_battery(state.my_base) if state.phase == 1 else None
+        if battery:
+            return battery.pos
         return state.clamp_to_zone(state.safe_center, 3)
 
     # ------------------------------------------------------------------
@@ -108,8 +110,9 @@ class TacticianBot(Strategy):
                 hide = state.clamp_to_zone((d.x + dx * 700, d.y + dy * 700), 2)
                 return state.move_towards(radar, hide)
             return state.move_away(radar, danger)
-        if state.phase == 1 and state.element.is_free:
-            return state.move_towards(radar, state.element.pos)
+        battery = state.nearest_battery(radar) if state.phase == 1 else None
+        if battery:
+            return state.move_towards(radar, battery.pos)
         if state.phase == 2:   # le Radar mène la chasse, les autres l'escortent
             if self.last_known is not None and state.distance(radar,
                                                               self.last_known) < 1000:

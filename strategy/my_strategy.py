@@ -66,12 +66,14 @@ class MyStrategy(Strategy):
         return commands
 
     def play_radar(self, state, radar):
-        # Phase 1 : aller chercher la batterie puis la ramener à la base
+        # Phase 1 : aller chercher une batterie puis la ramener à la base
+        # (chaque batterie ramenée rapporte des points, puis elle réapparaît)
         if state.phase == 1:
             if radar.carrying_element:
                 return state.move_towards(radar, state.my_base)
-            if state.element.is_free:
-                return state.move_towards(radar, state.element.pos)
+            battery = state.nearest_battery(radar)
+            if battery:
+                return state.move_towards(radar, battery.pos)
         # Rien à faire : on l'arrête, sinon il continuerait sur sa lancée
         return state.stop(radar)
 

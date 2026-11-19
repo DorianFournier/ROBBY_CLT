@@ -88,12 +88,17 @@ class Robot:
 
 
 class Element:
-    """La batterie."""
+    """
+    Une batterie. Après une capture, elle disparaît (present = False) puis
+    réapparaît à sa place quelques tours plus tard.
+    """
 
     def __init__(self, data: dict):
+        self.id: int = data.get("id", 0)
         self.x: float = data["x"]
         self.y: float = data["y"]
         self.carried_by_id: int | None = data["carried_by_id"]
+        self.present: bool = data.get("present", True)
 
     @property
     def pos(self) -> Point:
@@ -101,7 +106,13 @@ class Element:
 
     @property
     def is_free(self) -> bool:
-        return self.carried_by_id is None
+        """Posée au sol : un Radar peut la ramasser."""
+        return self.present and self.carried_by_id is None
+
+    def __repr__(self):
+        etat = ("libre" if self.is_free else "absente" if not self.present
+                else f"portée par {self.carried_by_id}")
+        return f"Element({self.id} {etat} en {self.x:.0f},{self.y:.0f})"
 
 
 class GameState:
@@ -112,6 +123,8 @@ class GameState:
     (vivants ou morts) et SEULEMENT les ennemis détectés par vos radars.
 
     Outils principaux :
+        state.nearest_battery(robot)         batterie libre la plus proche (ou None)
+        state.free_batteries                 batteries posées au sol, à prendre
         state.move_towards(robot, point)     commande pour aller vers un point
         state.stop(robot)                    commande d'arrêt (vitesse 0)
         state.predict(robot, turns)          position future s'il garde son cap
@@ -134,7 +147,10 @@ class GameState:
         self.turn: int = msg["turn"]
         self.phase: int = msg["phase"]
         self.phase_turn: int = msg.get("phase_turn", msg["turn"])
-        self.element = Element(msg["element"])
+        # Batteries (phase 1) : une au centre à 2 équipes, plusieurs à 3 ou 4.
+        # state.element est la première (la seule à 2 équipes).
+        self.elements = [Element(e) for e in (msg.get("elements") or [msg["element"]])]
+        self.element = self.elements[0]
         self.robots = [Robot(r) for r in msg.get("robots", [])]
 
         self.map_width: float = c["map_width"]
@@ -172,6 +188,19 @@ class GameState:
 
     def get_robot(self, robot_id: int) -> Robot | None:
         return next((r for r in self.robots if r.id == robot_id), None)
+
+    @property
+    def free_batteries(self) -> list[Element]:
+        """Batteries posées au sol, qu'un Radar peut ramasser."""
+        return [e for e in self.elements if e.is_free]
+
+    def nearest_battery(self, origin) -> Element | None:
+        """Batterie libre la plus proche de `origin` (robot ou point), ou None."""
+        return self.nearest(origin, self.free_batteries)
+
+    def carried_battery(self, robot) -> Element | None:
+        """Batterie portée par `robot` (ou None)."""
+        return next((e for e in self.elements if e.carried_by_id == robot.id), None)
 
     @staticmethod
     def nearest(origin, candidates):

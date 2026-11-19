@@ -68,9 +68,16 @@ class SimResult:
     shots: list = field(default_factory=list)      # (tireur, cible ou None, bloqué)
     shield_damage: dict = field(default_factory=dict)  # id du D -> points perdus
     shield_breaks: list = field(default_factory=list)  # boucliers brisés
-    carrier: int | None = None                     # porteur de la batterie
+    # batteries (phase 1). Avec plusieurs batteries, `carrier` est notre
+    # porteur s'il y en a un (sinon un porteur ennemi), `battery` la première
+    # batterie posée au sol, et `captured_by` notre équipe si elle a marqué
+    # une capture ce tour (sinon une équipe ennemie qui en a marqué une).
+    carrier: int | None = None
     battery: tuple = (0.0, 0.0)
-    captured_by: int | None = None                 # équipe qui a marqué la capture
+    captured_by: int | None = None
+    carriers: dict = field(default_factory=dict)   # batterie -> porteur
+    free_batteries: list = field(default_factory=list)   # positions au sol
+    captures: list = field(default_factory=list)   # équipes qui ont capturé
 
     def robot(self, robot_id):
         return self.robots.get(robot_id)
@@ -213,14 +220,18 @@ class TurnSimulator:
                 d.shield_hp, d.shield_direction = 0, None
                 d.shield_cooldown = self.shield_break_turns + 1   # -1 en fin de tour
                 result.shield_breaks.append(did)
-        carrier = st.element.carried_by_id
-        battery = st.element.pos
+        # batteries : [id, position, porteur, présente]
+        batteries = [[e.id, e.pos, e.carried_by_id, getattr(e, "present", True)]
+                     for e in st.elements]
         for rid in result.killers:
             r = robots[rid]
             r.alive = False
             result.deaths.append(rid)
-            if r.carrying_element:
-                r.carrying_element, carrier, battery = False, None, r.pos
+            if r.carrying_element:          # la batterie tombe là où il était
+                r.carrying_element = False
+                for b in batteries:
+                    if b[2] == rid:
+                        b[1], b[2] = r.pos, None
 
         # 2. déplacements simultanés : TOUS les robots qui roulent (cap et
         #    vitesse gardés), sauf les pénalisés, dont les moteurs sont coupés
@@ -242,7 +253,9 @@ class TurnSimulator:
         low_y, high_y = self.radius, self.height - self.radius
         gap = 2 * self.radius
         stopped = set()
-        first_touch = {}            # radar -> pas où il touche la batterie
+        touches = {}                # (radar, batterie) -> premier pas au contact
+        libres = ([b for b in batteries if b[2] is None and b[3]]
+                  if st.phase == 1 else [])
 
         def in_shield(p, t):
             return any(in_sector(p, c, self.shield_radius, a, self.shield_arc)
@@ -277,29 +290,67 @@ class TurnSimulator:
                     del proposed[rid]
                 stopped |= refused
             pos.update(proposed)
-            if st.phase == 1 and carrier is None:
-                for rid in proposed:
-                    if robots[rid].type == "R" and rid not in first_touch \
-                            and distance(pos[rid], battery) <= self.pickup:
-                        first_touch[rid] = step
+            for rid in proposed:
+                if robots[rid].type != "R" or robots[rid].carrying_element:
+                    continue
+                for b in libres:
+                    d = distance(pos[rid], b[1])
+                    if (rid, b[0]) not in touches and d <= self.pickup:
+                        touches[(rid, b[0])] = (step + 1, d)
         for rid, p in pos.items():
-            robots[rid].x, robots[rid].y = p
+            # arrondi au dixième, comme le serveur (une capture se joue à 0.1 près)
+            robots[rid].x, robots[rid].y = round(p[0], 1), round(p[1], 1)
         for rid in stopped:
             robots[rid].speed = 0          # bloqué : s'arrête net
 
-        # 3. batterie : ramassage (le premier arrivé), capture à la base
-        if st.phase == 1 and carrier is None and first_touch:
-            winner = min(first_touch, key=lambda rid: (first_touch[rid], rid))
-            carrier = winner
-            robots[winner].carrying_element = True
-        if carrier is not None and robots.get(carrier) and robots[carrier].alive:
-            c = robots[carrier]
-            battery = c.pos
+        # 3. batteries : ramassage (pour chaque batterie, le premier Radar
+        #    arrivé ; un Radar n'en prend qu'une), puis capture à la base
+        for b in libres:            # Radar qui roule, déjà au contact : pas 0
+            for rid in movers:
+                r = robots[rid]
+                d = distance(start[rid], b[1])
+                if r.type == "R" and r.alive and not r.carrying_element \
+                        and d <= self.pickup:
+                    touches[(rid, b[0])] = (0, d)
+        # comme le serveur : le premier arrivé, puis le plus proche ; égalité
+        # parfaite = batterie disputée, personne ne la prend ce tour-ci
+        par_batterie = {}
+        for (rid, bid), (step, d) in touches.items():
+            par_batterie.setdefault(bid, []).append((step, d, rid))
+        pris, radars = {}, set()
+        for bid in sorted(par_batterie, key=lambda b: (min(par_batterie[b])[:2], b)):
+            cands = sorted(t for t in par_batterie[bid] if t[2] not in radars)
+            if not cands:
+                continue
+            if len(cands) > 1 and cands[1][0] == cands[0][0] \
+                    and cands[1][1] - cands[0][1] < 1.0:
+                continue
+            pris[bid] = cands[0][2]
+            radars.add(cands[0][2])
+        for b in batteries:
+            if b[0] in pris:
+                b[2] = pris[b[0]]
+                robots[b[2]].carrying_element = True
+        me = st.team_id
+        for b in batteries:
+            c = robots.get(b[2]) if b[2] is not None else None
+            if c is None or not c.alive:
+                continue
+            b[1] = c.pos
             base = st.base_of(c.team_id)
             if st.phase == 1 and base and distance(c.pos, base) <= self.base_radius:
-                result.captured_by = c.team_id
-                c.carrying_element, carrier = False, None
-        result.carrier, result.battery = carrier, battery
+                result.captures.append(c.team_id)
+                c.carrying_element, b[2], b[3] = False, None, False
+        result.carriers = {b[0]: b[2] for b in batteries if b[2] is not None}
+        result.free_batteries = [b[1] for b in batteries if b[2] is None and b[3]]
+        porteurs = list(result.carriers.values())   # un porteur peut être invisible
+        mien = [rid for rid in porteurs if rid in robots and robots[rid].team_id == me]
+        result.carrier = (mien or porteurs or [None])[0]
+        position = [b[1] for b in batteries if b[2] == result.carrier]
+        result.battery = (result.free_batteries[0] if result.free_batteries
+                          else position[0] if position else st.element.pos)
+        if result.captures:
+            result.captured_by = me if me in result.captures else result.captures[0]
 
         # boucliers
         for rid, angle in shields.items():
