@@ -93,13 +93,20 @@ def test_targets_shields_and_first_hit():
     assert state.can_hit_from(k, spot, state.get_robot(31))
 
 
+def storm(radius, later=None):
+    forecast = [radius, radius] + [later or radius] * 4
+    return {"center": [7500, 7500], "radius": radius, "forecast": forecast,
+            "state": "pause", "target": later, "shrink_turn": None, "end_turn": None}
+
+
 def test_zone_escape_in_units():
-    zone = {"margin": 2, "safe": [2000, 2000, 13000, 13000], "next_margin": 3,
-            "next_turn": 50}
+    zone = storm(5500)
     state = make_free_state([robot(11, 1, "R", 1500, 7500),
                              robot(13, 1, "K", 7500, 7500)],
                             phase=2, zone=zone, turn=40)
-    assert state.zone_escape(state.get_robot(11)) == (2300, 7500)
+    assert state.zone_escape(state.get_robot(11)) == pytest.approx((2300, 7500))
+    assert not state.in_zone((3000, 3000))             # coin : la tempête est ronde
+    assert state.in_zone((7500, 2000))
     assert state.zone_escape(state.get_robot(13)) is None
 
 
@@ -127,10 +134,8 @@ def test_free_strategies_valid_on_random_states(strategy_class, phase):
         robots = [r for r in robots if rng.random() < 0.9]
         zone = None
         if phase == 2:
-            m = rng.randint(0, 6)
-            zone = {"margin": m, "safe": [m * 1000, m * 1000, 15000 - m * 1000,
-                                          15000 - m * 1000],
-                    "next_margin": min(m + 1, 6), "next_turn": turn + 3}
+            r = rng.uniform(1500, 10600)
+            zone = storm(r, max(1500, r - 1000))
         state = make_free_state(robots, phase=phase, zone=zone, turn=turn)
         commands = bot.decide(state)
         assert check_commands(state, commands) == [], (turn, commands)

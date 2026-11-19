@@ -100,11 +100,12 @@ class GameState:
         self.map_width: int = self.config["map_width"]
         self.map_height: int = self.config["map_height"]
 
-        # Zone sûre (phase 2) : hors de cette zone en fin de tour, un robot
-        # est détruit. "next_turn" annonce le prochain rétrécissement.
-        self.zone: dict = msg.get("zone") or {
-            "margin": 0, "next_margin": None, "next_turn": None,
-            "safe": [0, 0, self.map_width - 1, self.map_height - 1]}
+        # Tempête (phase 2) : un cercle sûr qui se resserre par étapes. Hors
+        # du cercle en fin de tour, un robot est détruit. Le serveur envoie :
+        #   center, radius (rayon à la fin de CE tour), forecast (rayons des
+        #   prochains tours), state ("calm", "pause", "shrink", "final"),
+        #   target (prochain cercle annoncé), shrink_turn, end_turn.
+        self.zone: dict = msg.get("zone") or self.calm_zone()
 
     # ------------------------------------------------------------------
     # Robots
@@ -166,24 +167,41 @@ class GameState:
     # Zone (phase 2)
     # ------------------------------------------------------------------
 
-    def zone_margin(self, lookahead: int = 0) -> int:
-        """Anneaux mortels dans `lookahead` tours (0 = maintenant)."""
-        nxt = self.zone.get("next_turn")
-        if nxt is not None and nxt - self.turn <= lookahead:
-            return self.zone["next_margin"]
-        return self.zone.get("margin", 0)
+    def calm_zone(self) -> dict:
+        """Pas de tempête (phase 1, ou serveur qui n'envoie rien)."""
+        w, h = self.map_width, self.map_height
+        radius = (w * w + h * h) ** 0.5   # largement plus grand que la carte
+        return {"center": [(w - 1) / 2, (h - 1) / 2], "radius": radius,
+                "forecast": [radius], "state": "calm", "target": None,
+                "shrink_turn": None, "end_turn": None}
+
+    @property
+    def storm_center(self):
+        return tuple(self.zone["center"])
+
+    def storm_radius(self, lookahead: int = 0) -> float:
+        """Rayon sûr à la fin de ce tour (0), du suivant (1), etc."""
+        forecast = self.zone.get("forecast") or [self.zone["radius"]]
+        return forecast[min(max(lookahead, 0), len(forecast) - 1)]
 
     def in_zone(self, pos: Position, lookahead: int = 0) -> bool:
-        """True si la case est (ou sera dans `lookahead` tours) dans la zone sûre."""
-        m = self.zone_margin(lookahead)
-        return (m <= pos[0] < self.map_width - m
-                and m <= pos[1] < self.map_height - m)
+        """True si la case est (ou sera dans `lookahead` tours) dans le cercle
+        sûr : distance (à vol d'oiseau) au centre <= rayon."""
+        cx, cy = self.storm_center
+        dist = ((pos[0] - cx) ** 2 + (pos[1] - cy) ** 2) ** 0.5
+        return dist <= self.storm_radius(lookahead) + 1e-9
 
     def clamp_to_zone(self, pos: Position, lookahead: int = 0) -> Position:
-        """Case la plus proche de `pos` dans la zone sûre."""
-        m = self.zone_margin(lookahead)
-        return (min(max(pos[0], m), self.map_width - 1 - m),
-                min(max(pos[1], m), self.map_height - 1 - m))
+        """Case la plus proche de `pos` dans le cercle sûr (pos si elle y est)."""
+        if self.in_zone(pos, lookahead):
+            return pos
+        cx, cy = self.storm_center
+        inside = [(x, y) for x in range(self.map_width) for y in range(self.map_height)
+                  if self.in_zone((x, y), lookahead)]
+        if not inside:
+            return (round(cx), round(cy))
+        return min(inside, key=lambda c: ((c[0] - pos[0]) ** 2 + (c[1] - pos[1]) ** 2,
+                                          (c[0] - cx) ** 2 + (c[1] - cy) ** 2))
 
     def zone_escape_path(self, robot: Robot, lookahead: int = 2,
                          avoid=(), taken=()) -> list[str]:

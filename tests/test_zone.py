@@ -1,5 +1,5 @@
 # tests/test_zone.py
-# Zone qui rétrécit (phase 2) côté client : outils de GameState et bots.
+# Tempête (phase 2) côté client, mode grille : cercle sûr, outils et bots.
 
 import pytest
 
@@ -8,12 +8,20 @@ from robby.game_state import GameState, step
 from tests.helpers import robot
 
 
+def radius_for(margin):
+    """Cercle dont le bord passe juste derrière la case (margin, 7)."""
+    return 7 - margin + 0.4
+
+
 def state_with_zone(robots, margin, next_margin=None, next_turn=None, turn=50):
+    forecast = [radius_for(next_margin if next_turn is not None
+                           and turn + k >= next_turn else margin)
+                for k in range(6)]
     msg = {"type": "game_state", "turn": turn, "phase": 2, "phase_turn": 30,
            "robots": robots, "element": {"x": 0, "y": 7, "carried_by_id": None},
-           "zone": {"margin": margin, "next_margin": next_margin,
-                    "next_turn": next_turn,
-                    "safe": [margin, margin, 14 - margin, 14 - margin]}}
+           "zone": {"center": [7, 7], "radius": forecast[0], "forecast": forecast,
+                    "state": "pause", "target": None, "shrink_turn": next_turn,
+                    "end_turn": None}}
     return GameState(msg, 1, {"map_width": 15, "map_height": 15})
 
 
@@ -28,7 +36,14 @@ def test_without_zone_info_everything_is_safe():
     msg = {"turn": 1, "phase": 1, "robots": [],
            "element": {"x": 7, "y": 7, "carried_by_id": None}}
     state = GameState(msg, 1, {})
-    assert state.in_zone((0, 0)) and state.zone_margin() == 0
+    assert state.in_zone((0, 0)) and state.zone["state"] == "calm"
+
+
+def test_storm_is_round():
+    state = state_with_zone([], margin=1)               # rayon 6.4 autour de (7, 7)
+    assert state.in_zone((1, 7))                       # bord : 6 du centre
+    assert not state.in_zone((2, 2))                   # coin : 7.07 du centre
+    assert state.clamp_to_zone((0, 0)) == (3, 3)       # case sûre la plus proche
 
 
 def test_escape_path_brings_robot_back_inside():
