@@ -307,16 +307,15 @@ au plus fort. Le but est de les battre l'un après l'autre.
 | `bot3` | `TacticianBot` | « Tacticien » : il se souvient des ennemis vus, son Radar se cache derrière le Défenseur quand un Destructeur ennemi menace. En phase 2, il tient le centre du prochain cercle (celui qui attend voit l'autre arriver en premier), avance derrière son Défenseur, contourne les boucliers ennemis pour tirer de côté, ou les use. |
 | `bot4` | `SimulatorBot` | « Simulateur » : il essaie des centaines de plans dans un simulateur de tour et garde le meilleur (voir plus bas). |
 
-Mesuré sur 30 parties par duel (côtés alternés, une commande sur dix perdue
-au hasard pour que les parties soient toutes différentes) :
+Mesuré sur 200 parties par duel (côtés alternés, une commande sur dix perdue
+au hasard pour que les parties soient toutes différentes). Score : victoire 1,
+nul 0,5, défaite 0 :
 
-| Duel | Victoires |
+| Duel | Score du premier |
 |---|---|
-| bot2 contre bot1 | 29 / 30 |
-| bot3 contre bot1 | 30 / 30 |
-| bot3 contre bot2 | 21 / 30 |
-| bot4 contre bot3 | 22 / 30 |
-| bot4 contre bot2 | 26 / 30 |
+| bot3 contre bot2 | 0,78 |
+| bot4 contre bot3 | 0,85 |
+| bot4 contre bot2 | 0,90 |
 
 Lire leur code (`bots/level2_rusher.py`, `bots/level3_tactician.py`...) est une
 bonne source d'idées... mais pour les battre, il faudra faire mieux !
@@ -352,8 +351,9 @@ poids de `evaluate`, ajouter des candidats, prévoir deux tours à l'avance...
 ### Le simulateur de tour : tester ses coups avant de jouer
 
 `robby/simulator.py` refait les calculs du serveur (mêmes règles, même ordre)
-sur ce que vous voyez. Sur 1140 tours de vraies parties, il a donné exactement
-les mêmes positions, destructions et boucliers que le serveur. Vous pouvez
+sur ce que vous voyez. Sur 2508 tours de vraies parties (2 à 4 équipes), il a
+donné exactement les mêmes positions, destructions, boucliers et batteries que
+le serveur. Vous pouvez
 l'utiliser dans votre propre stratégie :
 
 ```python
