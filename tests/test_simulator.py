@@ -50,8 +50,8 @@ def test_battery_pickup_and_capture():
 
 
 def test_zone_kills_and_invalid_commands_are_ignored():
-    zone = {"margin": 1, "safe": [1000, 1000, 14000, 14000],
-            "next_margin": 2, "next_turn": 99}
+    zone = {"center": [7500, 7500], "radius": 6500, "forecast": [6500],
+            "state": "pause", "target": 5000, "shrink_turn": 99, "end_turn": 105}
     res = run([robot(11, 1, "R", 700, 7500), robot(13, 1, "K", 5000, 5000)],
               {1: [move(13, angle=0, speed=99999), {"robot_id": 11}]},
               phase=2, zone=zone)

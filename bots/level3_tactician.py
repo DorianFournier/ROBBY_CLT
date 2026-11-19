@@ -306,8 +306,13 @@ class TacticianBot(Strategy):
             known = self.known_enemies()
             goal = (min(known, key=lambda m: distance(m["pos"], k.pos))["pos"]
                     if known else self.group_goal(state, None))
+            goal = state.clamp_to_zone(goal, 2)
 
-        path = self.avoid_taken(k, state.path_towards(k, goal, self.avoid), taken)
+        path = state.path_towards(k, goal, self.avoid)
+        # garde-fou : ne jamais finir son déplacement dans la tempête
+        while path and not state.in_zone(state.destination(k, path), 1):
+            path.pop()
+        path = self.avoid_taken(k, path, taken)
         if not path:
             taken.add(k.pos)
             return None

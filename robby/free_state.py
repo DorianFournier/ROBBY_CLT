@@ -80,8 +80,6 @@ class FreeGameState(GameState):
         self.shield_arc = c["shield_arc"]
         self.pickup_radius = c["pickup_radius"]
         self.base_radius = c["base_radius"]
-        if "zone" not in msg or not msg["zone"]:
-            self.zone["safe"] = [0, 0, self.map_width, self.map_height]
 
     # ------------------------------------------------------------------
     # Distances, carte
@@ -161,23 +159,31 @@ class FreeGameState(GameState):
         return move(robot, angle=heading, speed=min(limit, self.max_speed(robot)))
 
     # ------------------------------------------------------------------
-    # Zone (phase 2) : un anneau = `unit` unités
+    # Tempête (phase 2) : cercle sûr (voir GameState.storm_radius)
     # ------------------------------------------------------------------
 
-    def zone_rect(self, lookahead: int = 0, inset: float = 0.0):
-        """Zone sûre (x0, y0, x1, y1), réduite de `inset` sur chaque bord."""
-        m = self.zone_margin(lookahead) * self.unit + inset
-        return (m, m, self.map_width - m, self.map_height - m)
+    def calm_zone(self) -> dict:
+        zone = super().calm_zone()
+        zone["center"] = [self.map_width / 2, self.map_height / 2]
+        return zone
 
     def in_zone(self, pos, lookahead: int = 0, inset: float = 0.0) -> bool:
-        x0, y0, x1, y1 = self.zone_rect(lookahead, inset)
-        return x0 <= pos[0] <= x1 and y0 <= pos[1] <= y1
+        """Le point est-il (dans `lookahead` tours) à plus de `inset` unités à
+        l'intérieur du cercle sûr ?"""
+        return distance(pos, self.storm_center) <= self.storm_radius(lookahead) - inset
 
     def clamp_to_zone(self, pos, lookahead: int = 0, inset: float | None = None):
-        """Point le plus proche de `pos` dans la zone sûre (avec une marge)."""
+        """Point le plus proche de `pos` dans le cercle sûr (avec une marge)."""
         inset = self.robot_radius if inset is None else inset
-        x0, y0, x1, y1 = self.zone_rect(lookahead, inset)
-        return (min(max(pos[0], x0), x1), min(max(pos[1], y0), y1))
+        radius = max(0.0, self.storm_radius(lookahead) - inset)
+        center = self.storm_center
+        d = distance(pos, center)
+        if d <= radius:
+            return (pos[0], pos[1])
+        if d < 1e-9:
+            return center
+        return (center[0] + (pos[0] - center[0]) * radius / d,
+                center[1] + (pos[1] - center[1]) * radius / d)
 
     def zone_escape(self, robot, lookahead: int = 2) -> Point | None:
         """Point sûr où aller si le robot est (ou sera dans `lookahead`

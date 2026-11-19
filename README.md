@@ -6,6 +6,13 @@ les autres équipes sur le serveur ROBBY.
 Vous ne modifiez **que le dossier `strategy/`**. Le paquet `robby/` s'occupe
 du réseau, de la lecture de l'état et de la vérification des commandes.
 
+Le jeu a deux versions. Le serveur choisit, et votre client s'adapte tout seul :
+
+- le **mode libre** (par défaut) : les robots se déplacent selon un angle et
+  une vitesse. Votre code va dans `strategy/my_free_strategy.py` ;
+- le **mode grille** (serveur lancé avec `--mode grille`) : les robots vont de
+  case en case. Votre code va dans `strategy/my_strategy.py`.
+
 ## Installation et lancement
 
 ```bash
@@ -23,7 +30,7 @@ Options :
 | `--host` | adresse du serveur | `127.0.0.1` |
 | `--port` | port du serveur | `8000` |
 | `--name` | nom affiché sur l'écran du serveur (20 caractères max) | `TEAM` |
-| `--strategy` | `bot1`, `bot2`, `bot3` (bots de référence, pour les deux modes), `bot4` (mode libre) ou `module:Classe` | `strategy.my_strategy:MyStrategy` |
+| `--strategy` | `bot1`, `bot2`, `bot3` (bots de référence, pour les deux modes), `bot4` (mode libre) ou `module:Classe` | `mine` : votre stratégie, celle du mode du serveur |
 | `-v` | affiche les commandes envoyées à chaque tour | |
 
 Pour vous entraîner, lancez le serveur en local, puis plusieurs clients dans des
@@ -225,12 +232,43 @@ sa base 5 tours plus tard.
 Les robots détruits **ne réapparaissent plus**. La partie s'arrête **dès qu'il
 ne reste qu'une seule équipe en vie**. Les 100 tours sont une durée maximale.
 
-**La zone se resserre.** À partir du 20e tour de la phase 2, l'anneau
-extérieur de la carte devient mortel, puis un anneau de plus tous les 8 tours,
-jusqu'à un carré de 3 × 3 au centre. **Un robot hors de la zone sûre à la fin
-d'un tour est détruit.** Le prochain rétrécissement est annoncé :
-`state.zone["next_turn"]`. Pensez à votre Radar, qui n'avance que d'une case
-par tour !
+**La tempête arrive.** La zone sûre est un **cercle** centré sur la carte, qui
+contient d'abord tout le plateau et se resserre par étapes. Chaque étape a deux
+temps :
+
+1. une **pause**, pendant laquelle la tempête est immobile et le **prochain
+   cercle est annoncé** ;
+2. une **avancée** à vitesse constante jusqu'à ce cercle.
+
+| Étape | Pause | Cercle visé (rayon) | Vitesse | Tours de la phase 2 |
+|---|---|---|---|---|
+| 1 | 15 tours | 6 cases | 0,5 case par tour | pause 1–15, avancée 16–25 |
+| 2 | 6 tours | 3,5 cases | 0,4 case par tour | pause 26–31, avancée 32–38 |
+| 3 | 6 tours | 1,5 case | 0,3 case par tour | pause 39–44, avancée 45–51 |
+
+En mode libre, multipliez par 1000 (une case = 1000 unités).
+
+**Un robot dont le centre est hors du cercle à la fin d'un tour est détruit.**
+Le cercle est rond : les coins tombent avant le milieu des bords. La tempête
+avance moins vite que le Radar, mais il n'avance que d'une case (1000 unités)
+par tour : partez à temps !
+
+Ce que vous savez de la tempête (`state.zone`, envoyé à chaque tour) :
+
+| Clé | Contenu |
+|---|---|
+| `center` | centre du cercle |
+| `radius` | rayon sûr à la **fin de ce tour** |
+| `forecast` | rayons des prochains tours (`forecast[2]` : dans 2 tours) |
+| `state` | `"calm"` (phase 1), `"pause"`, `"shrink"` (elle avance) ou `"final"` |
+| `target` | rayon du prochain cercle annoncé |
+| `shrink_turn`, `end_turn` | tours où la prochaine avancée commence et se termine |
+
+Le plus simple est d'utiliser les outils : `state.in_zone(position,
+lookahead)` (sera-t-on à l'abri dans `lookahead` tours ?),
+`state.storm_radius(lookahead)`, `state.clamp_to_zone(position)` (le point sûr
+le plus proche), `state.zone_escape_path(robot)` (grille) et
+`state.zone_escape(robot)` (libre).
 
 ### Score
 
@@ -267,8 +305,9 @@ Un tir **arrêté par un bouclier** n'est pas une faute : il rate, simplement.
 
 ## Écrire sa stratégie
 
-Ouvrez `strategy/my_strategy.py`. La méthode `decide(state)` est appelée à
-chaque tour et retourne une liste de commandes :
+En mode grille, ouvrez `strategy/my_strategy.py` (en mode libre :
+`strategy/my_free_strategy.py`, voir plus bas). La méthode `decide(state)` est
+appelée à chaque tour et retourne une liste de commandes :
 
 ```python
 from robby import move, shoot, shield
@@ -302,8 +341,8 @@ vous informent de ce qui se passe (voir `robby/strategy.py`).
 | `state.speed(robot)` | nombre de cases par tour (K 3, D 2, R 1) |
 | `state.can_follow(robot, chemin)` | le chemin est-il valide d'après ce que vous voyez ? |
 | `state.possible_moves(robot)` | directions valides pour un pas d'une case |
-| `state.in_zone((x, y), lookahead=0)` | la case est-elle dans la zone sûre (maintenant, ou dans `lookahead` tours) ? |
-| `state.zone_escape_path(robot, lookahead=2, taken=...)` | chemin pour rentrer dans la zone sûre vers une case libre (vide si le robot est à l'abri) |
+| `state.in_zone((x, y), lookahead=0)` | la case est-elle dans le cercle sûr de la tempête (à la fin de ce tour, ou dans `lookahead` tours) ? |
+| `state.zone_escape_path(robot, lookahead=2, taken=...)` | chemin pour rentrer dans le cercle sûr vers une case libre (vide si le robot est à l'abri) |
 | `state.destination(robot, chemin)` | case d'arrivée d'un chemin |
 | `state.trim_to_free(robot, chemin, taken)` | raccourcit un chemin pour ne pas viser une case déjà visée par un allié |
 | `state.targets_in_range(k)` | ennemis visibles à portée et non protégés par un bouclier ennemi |
@@ -321,14 +360,15 @@ passez simplement le tour : la connexion n'est pas perdue.
 
 ## Mode libre (V2) : angle et vitesse
 
-Si le serveur est lancé avec `--mode libre`, les robots ne vont plus de case
-en case : ils partent dans une direction donnée par un **angle**, à la
-**vitesse** de votre choix. Votre client le détecte tout seul. Votre stratégie
-reçoit alors un `FreeGameState`, et un avertissement s'affiche si elle n'est
-écrite que pour l'autre mode.
+C'est le mode par défaut du serveur. Les robots ne vont plus de case en case :
+ils partent dans une direction donnée par un **angle**, à la **vitesse** de
+votre choix. Votre client le détecte tout seul et lance
+`strategy/my_free_strategy.py`. Votre stratégie reçoit alors un
+`FreeGameState`, et un avertissement s'affiche si elle n'est écrite que pour
+l'autre mode.
 
 ```bash
-uv run main.py --name Moi --strategy strategy.my_free_strategy:MyFreeStrategy
+uv run main.py --name Moi
 ```
 
 Pour une stratégie qui sait jouer les deux modes, déclarez
@@ -355,7 +395,7 @@ Pour une stratégie qui sait jouer les deux modes, déclarez
 - **Vision** : un cercle de rayon 3000 autour de chaque Radar.
 - **Batterie** : un Radar la ramasse en passant à moins de 500 unités, et
   marque la capture en entrant dans sa base (un disque de rayon 700).
-- Phases, zone, points et pénalités : comme en V1. Une vitesse trop grande,
+- Phases, tempête, points et pénalités : comme en V1. Une vitesse trop grande,
   ou une commande sans angle, vaut une pénalité.
 
 ### Commandes
@@ -382,7 +422,7 @@ shield(d, angle=180)                # bouclier tourné vers le bas
 | `state.first_hit(k, angle)` | ce que toucherait un tir : `(robot ou None, bloqué ?, distance)` |
 | `state.firing_spot(k, cible)` | point atteignable ce tour d'où tirer sur la cible sans être bloqué par un bouclier (pour contourner) |
 | `state.enemy_shields()`, `state.in_enemy_shield(point)` | boucliers ennemis visibles |
-| `state.zone_escape(robot)`, `state.in_zone(point)`, `state.clamp_to_zone(point)` | zone sûre |
+| `state.zone_escape(robot)`, `state.in_zone(point, lookahead, inset)`, `state.clamp_to_zone(point)`, `state.storm_radius(k)` | tempête : point sûr où fuir, test d'un point, point sûr le plus proche, rayon dans k tours |
 | `state.center`, `state.my_base`, `state.on_base(robot)` | repères |
 
 Les outils de la grille (`path_towards`, `shortest_path`...) n'ont pas de sens

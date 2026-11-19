@@ -120,3 +120,11 @@ def test_tactician_unguarded_radar_retreats_from_enemy_destructor():
     from robby.game_state import step
     new_pos = step(radar.pos, commands[11]["path"][0])
     assert new_pos[0] < radar.x                  # il s'éloigne du K ennemi
+
+
+def test_default_strategy_follows_the_server_mode():
+    mine = load_strategy("mine")
+    mine.on_game_start(1, {"mode": "libre"})
+    assert type(mine.delegate).__name__ == "MyFreeStrategy"
+    mine.on_game_start(1, {"mode": "grille"})
+    assert isinstance(mine.delegate, MyStrategy)

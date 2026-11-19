@@ -3,8 +3,9 @@
 #   uv run main.py --host 192.168.1.10 --name MonEquipe
 #   uv run main.py --strategy bot2                (bot de référence niveau 2)
 #   uv run main.py --strategy strategy.autre:AutreStrategie
-#   Mode libre (serveur lancé avec --mode libre) :
-#   uv run main.py --strategy strategy.my_free_strategy:MyFreeStrategy
+# Sans --strategy : votre stratégie, celle du mode du serveur
+# (strategy/my_free_strategy.py en mode libre, le mode par défaut ;
+#  strategy/my_strategy.py si le serveur est lancé avec --mode grille).
 
 import argparse
 import importlib
@@ -12,13 +13,20 @@ import logging
 
 from robby.client import run
 
-DEFAULT_STRATEGY = "strategy.my_strategy:MyStrategy"
+DEFAULT_STRATEGY = "mine"
 
 
 def load_strategy(path: str):
-    """`bot1` / `bot2` / `bot3`, ou `module:Classe`."""
+    """`mine` (votre stratégie), `bot1` à `bot4`, ou `module:Classe`."""
     from bots import BOTS
 
+    if path == DEFAULT_STRATEGY:
+        # Votre stratégie, selon le mode choisi par le serveur :
+        # mode libre -> strategy/my_free_strategy.py, grille -> my_strategy.py
+        from robby.strategy import ByMode
+        from strategy.my_free_strategy import MyFreeStrategy
+        from strategy.my_strategy import MyStrategy
+        return ByMode(MyStrategy, MyFreeStrategy)
     if path in BOTS:
         return BOTS[path]()
     module_name, _, class_name = path.partition(":")
@@ -32,9 +40,9 @@ def main():
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--name", default="TEAM", help="nom de votre équipe")
     parser.add_argument("--strategy", default=DEFAULT_STRATEGY,
-                        help="bot1, bot2, bot3 (bots de référence, pour les deux "
-                             "modes), bot4 (mode libre) ou module:Classe "
-                             "de votre stratégie")
+                        help="mine (défaut : votre stratégie, selon le mode du "
+                             "serveur), bot1, bot2, bot3 (les deux modes), "
+                             "bot4 (mode libre) ou module:Classe")
     parser.add_argument("-v", "--verbose", action="store_true",
                         help="affiche les commandes envoyées à chaque tour")
     args = parser.parse_args()
