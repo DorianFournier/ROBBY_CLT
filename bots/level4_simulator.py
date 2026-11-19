@@ -222,8 +222,9 @@ class SimulatorBot(Strategy):
                 if g.carrying_element:   # intercepter le porteur
                     cands.append(st.move_towards(robot, g.pos, stop_at=2000))
             for g in self.ghosts:    # tir « à l'aveugle » sur un ennemi disparu
-                if distance(robot.pos, g.pos) - st.robot_radius <= st.config[
-                        "destructor_range"]:
+                if (distance(robot.pos, g.pos) - st.robot_radius
+                        <= st.config["destructor_range"]
+                        and st.aim(robot, g) is not None):   # pas sur nous-mêmes
                     cands.append(st.shoot_at(robot, g))
             for e in st.enemies:
                 spot = st.firing_spot(robot, e)
