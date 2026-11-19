@@ -254,6 +254,24 @@ partie puisse être rejouée à l'identique. Les méthodes `on_game_start`,
 `on_turn_result` et `on_game_over` vous informent de ce qui se passe (voir
 `robby/strategy.py`).
 
+### Choisir le placement de départ
+
+Vos trois robots commencent en **triangle** devant votre base. Vues depuis la
+base, face au centre de l'arène, les trois places sont **`"avant"`** (la
+pointe, la plus proche du centre), **`"gauche"`** et **`"droite"`** (en retrait,
+de part et d'autre). C'est vous qui choisissez quel robot va où, avec
+l'attribut `placement` de votre classe :
+
+```python
+class MyStrategy(Strategy):
+    placement = {"R": "gauche", "D": "avant", "K": "droite"}
+```
+
+Par défaut : `{"R": "avant", "D": "droite", "K": "gauche"}`. Un robot détruit
+réapparaît à sa place. Si le placement est invalide (deux robots sur la même
+place, un robot oublié...), le serveur garde le placement par défaut et le
+client affiche pourquoi.
+
 ### Ce que contient `state` (un objet `GameState`)
 
 | Attribut / méthode | Description |
@@ -419,8 +437,10 @@ Le client et le serveur échangent des messages JSON par TCP, **un message par
 ligne** :
 
 ```
-client → {"type": "register", "name": "MonEquipe"}
-serveur → {"type": "register_ack", "status": "ok", "team_id": 2}
+client → {"type": "register", "name": "MonEquipe",
+          "placement": {"R": "avant", "D": "droite", "K": "gauche"}}
+serveur → {"type": "register_ack", "status": "ok", "team_id": 2,
+           "placement": {...}}   (+ "placement_error" si le placement est refusé)
 serveur → {"type": "game_start", "team_id": 2, "seed": 106, "game": 1, "games": 1,
            "config": {...}}
 à chaque tour :

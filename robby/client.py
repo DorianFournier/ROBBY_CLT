@@ -57,12 +57,21 @@ def run(strategy_factory, host: str, port: int, name: str) -> None:
     """
     strategy = None
     games_played = 0
+    # placement de départ : lu sur la classe, sinon sur une stratégie d'essai
+    placement = getattr(strategy_factory, "placement", None)
+    if placement is None:
+        placement = getattr(strategy_factory(), "placement", None)
     with Connection(host, port, timeout=10) as conn:
-        conn.send({"type": "register", "name": name})
+        conn.send({"type": "register", "name": name, "placement": placement})
         ack = conn.receive()
         if not ack or ack.get("status") != "ok":
             log.error("Inscription refusée par le serveur : %s", ack)
             return
+        if ack.get("placement_error"):
+            log.warning("Placement refusé (%s) : placement par défaut %s",
+                        ack["placement_error"], ack.get("placement"))
+        elif ack.get("placement"):
+            log.info("Placement de départ : %s", ack["placement"])
 
         team_id = ack["team_id"]
         config = {}

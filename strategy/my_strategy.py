@@ -45,6 +45,9 @@ from robby.strategy import Strategy
 
 
 class MyStrategy(Strategy):
+    # Placement de départ (vu depuis votre base, face au centre) : "avant",
+    # "gauche" ou "droite", une place par robot. À vous de choisir !
+    placement = {"R": "avant", "D": "droite", "K": "gauche"}
 
     def decide(self, state: GameState) -> list[dict]:
         commands = []
