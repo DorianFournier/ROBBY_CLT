@@ -59,7 +59,7 @@ uv run pytest
 
 | Type | Nom | Vitesse max par tour | Capacité |
 |---|---|---|---|
-| `R` | Radar | 1000 | Voit les ennemis à moins de 3000. Seul robot pouvant ramasser la batterie. |
+| `R` | Radar | 1000 | Voit les ennemis à moins de 3000. Seul robot pouvant ramasser une batterie. |
 | `D` | Défenseur | 2000 | Pose un bouclier : une part de tarte de 90° et de rayon 1500. |
 | `K` | Destructeur | 5000 | Tire un rayon de 3000 qui touche le premier ennemi rencontré. |
 
@@ -144,18 +144,25 @@ de l'état du début du tour :
 3. les boucliers sont posés ;
 4. la tempête détruit les robots restés dehors.
 
-### Phase 1 — Capture (100 tours au maximum)
+### Phase 1 — Course aux batteries (60 tours)
 
-Une **batterie** est posée au centre de l'arène. Un Radar la ramasse en
-passant à moins de 500 unités. Le premier Radar qui la **ramène dans sa base**
-termine la phase 1. Son équipe reçoit alors un **second Destructeur**. Si le
-porteur est détruit, la batterie tombe là où il est mort. Un robot détruit
-pendant cette phase réapparaît près de sa base 5 tours plus tard.
+Des **batteries** sont posées dans l'arène, chacune à égale distance des bases
+de deux équipes voisines : une au centre à 2 équipes, deux à 3 équipes, quatre
+à 4 équipes. Un Radar ramasse une batterie en passant à moins de 500 unités,
+et n'en porte qu'une à la fois.
+
+**Chaque batterie ramenée dans votre base rapporte 1000 points.** Elle
+disparaît, puis **réapparaît à sa place 3 tours plus tard** : faites autant
+d'allers-retours que possible pendant les 60 tours ! Si le porteur est
+détruit, la batterie tombe là où il est mort. Un robot détruit pendant cette
+phase réapparaît près de sa base 5 tours plus tard.
 
 ### Phase 2 — Match à mort (100 tours au maximum)
 
 Les robots détruits **ne réapparaissent plus**. La partie s'arrête **dès qu'il
 ne reste qu'une seule équipe en vie**. Les 100 tours sont une durée maximale.
+Attention : survivre ne suffit pas, c'est **le score** qui désigne le
+vainqueur.
 
 **La tempête arrive.** La zone sûre est un **cercle**, qui contient d'abord
 toute l'arène et se resserre par étapes. Chaque étape a deux temps :
@@ -203,20 +210,22 @@ Le plus simple est d'utiliser les outils de `state` (voir plus bas).
 
 ### Score
 
-**La dernière équipe en vie gagne.** Si plusieurs équipes survivent au bout des
-100 tours, la meilleure au score total parmi elles l'emporte : une équipe
-éliminée ne gagne jamais. **Attention : une équipe dont le client se
-déconnecte (plantage, Ctrl+C...) est disqualifiée**, quel que soit son score.
-Ses robots restent dans l'arène et peuvent toujours être détruits.
+**L'équipe qui a le meilleur score gagne.** Être la dernière équipe en vie
+arrête la partie, mais ne suffit pas pour gagner. **Attention : une équipe
+dont le client se déconnecte (plantage, Ctrl+C...) est disqualifiée**, quel
+que soit son score. Ses robots restent dans l'arène et peuvent toujours être
+détruits.
 
-Chaque robot ennemi détruit rapporte :
-
-| Cible | Points |
+| Ce qui rapporte | Points |
 |---|---|
-| Destructeur `K` | 250 |
-| Défenseur `D` | 500 |
-| Radar `R` | 750 |
-| Radar portant la batterie | 1000 |
+| Batterie ramenée à votre base | 1000 chaque fois |
+| Destructeur `K` ennemi détruit | 250 |
+| Défenseur `D` ennemi détruit | 500 |
+| Radar `R` ennemi détruit | 750 |
+| Radar ennemi portant une batterie détruit | 1000 |
+| Chacun de vos robots encore en vie à la fin de la partie | 300 |
+
+Un robot détruit par la tempête ne rapporte rien à personne.
 
 ### Pénalités
 
@@ -252,7 +261,11 @@ partie puisse être rejouée à l'identique. Les méthodes `on_game_start`,
 | `state.turn`, `state.phase`, `state.phase_turn` | numéro du tour, de la phase (1 ou 2), du tour dans la phase |
 | `state.my_robots`, `state.my_robots_of_type("K")` | vos robots vivants |
 | `state.enemies` | ennemis vivants **visibles** |
-| `state.element` | la batterie : `.pos`, `.is_free`, `.carried_by_id` |
+| `state.elements` | les batteries : `.pos`, `.is_free` (posée au sol, à prendre), `.carried_by_id`, `.present` (`False` pendant qu'une batterie capturée réapparaît) |
+| `state.nearest_battery(robot)` | batterie libre la plus proche, ou `None` |
+| `state.free_batteries` | batteries posées au sol |
+| `state.carried_battery(robot)` | batterie portée par ce robot, ou `None` |
+| `state.element` | la première batterie (la seule à 2 équipes) |
 | `state.my_base`, `state.base_of(team_id)`, `state.on_base(robot)`, `state.center` | repères |
 | `state.move_towards(robot, point, stop_at=0)` | commande MOVE toute prête vers un point ou un robot, à la vitesse max sans dépasser le point visé ce tour-ci, en s'arrêtant à `stop_at` unités ; une fois arrivé, commande d'arrêt (sinon le robot continuerait) |
 | `state.move_away(robot, menace)` | commande MOVE pour s'éloigner |
@@ -351,7 +364,7 @@ apres = sim.run({state.team_id: mes_commandes,
                  2: commandes_que_je_prete_a_l_equipe_2})
 apres.deaths                  # robots détruits pendant ce tour
 apres.robot(13).pos           # position de mon K à la fin du tour
-apres.carrier, apres.captured_by
+apres.carriers, apres.captures   # porteurs de batterie, équipes qui ont capturé
 ```
 
 Il ne connaît que ce que vous voyez : un ennemi invisible n'existe pas pour lui,
@@ -412,7 +425,7 @@ serveur → {"type": "game_start", "team_id": 2, "seed": 106, "game": 1, "games"
            "config": {...}}
 à chaque tour :
   serveur → {"type": "game_state", "turn", "phase", "phase_turn", "robots": [...],
-             "element": {...}, "zone": {...}}
+             "elements": [...], "element": {...}, "zone": {...}}
   client  → {"type": "commands", "turn": <tour>, "commands": [
                {"robot_id": 11, "action": "MOVE", "angle": 90, "speed": 1000}, ...]}
              (avant turn_timeout)

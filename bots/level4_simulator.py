@@ -78,7 +78,7 @@ class SimulatorBot(Strategy):
                                  e.shield_direction)
         self.memory = {i: m for i, m in self.memory.items()
                        if state.turn - m[3] <= MEMORY
-                       or i == state.element.carried_by_id}
+                       or any(e.carried_by_id == i for e in state.elements)}
         ghosts = [self.ghost(i, *m) for i, m in self.memory.items() if i not in visible]
 
         self.ghosts = ghosts
@@ -119,7 +119,8 @@ class SimulatorBot(Strategy):
         """Ennemi disparu, supposé immobile... sauf le porteur de la batterie,
         qui rentre forcément vers sa base : on prédit où il est."""
         st = self.state
-        carrying = st.phase == 1 and st.element.carried_by_id == robot_id
+        carrying = st.phase == 1 and any(e.carried_by_id == robot_id
+                                         for e in st.elements)
         if carrying:
             base = st.base_of(team_id)
             if base is not None:
@@ -209,8 +210,9 @@ class SimulatorBot(Strategy):
         if robot.type == "R":
             if st.phase == 1 and robot.carrying_element:
                 cands.append(st.move_towards(robot, st.my_base))
-            if st.phase == 1 and st.element.is_free:
-                cands.append(st.move_towards(robot, st.element.pos))
+            if st.phase == 1:
+                for battery in st.free_batteries:
+                    cands.append(st.move_towards(robot, battery.pos))
             if self.hunt:
                 cands.append(st.move_towards(robot, self.hunt))
             for d in st.my_robots_of_type("D") + st.my_robots_of_type("K"):
@@ -296,24 +298,23 @@ class SimulatorBot(Strategy):
             if did in res.shield_breaks:
                 value += sign * SHIELD_BREAK
 
-        # --- 2. batterie (phase 1)
+        # --- 2. batteries (phase 1)
         if st.phase == 1:
             if res.captured_by == me:
                 value += 5000
             elif res.captured_by is not None:
                 value -= 5000
-            elif res.carrier is not None:
-                carrier = res.robots.get(res.carrier)   # invisible : ennemi
-                # porter la batterie vaut toujours mieux que la laisser :
-                # 2500 de bonus, moins 0.15 par unité qui reste jusqu'à la base
-                if carrier is not None and carrier.team_id == me:
-                    value += 2500 - 0.15 * distance(carrier.pos, st.my_base)
-                else:
-                    value -= 1500
-            else:
-                radars = [r for r in mine if r.type == "R"]
-                if radars:
-                    value -= 0.3 * min(distance(r.pos, res.battery) for r in radars)
+            porteurs = [res.robots.get(rid) for rid in res.carriers.values()]
+            miens = [c for c in porteurs if c is not None and c.team_id == me]
+            # porter une batterie vaut toujours mieux que la laisser :
+            # 2500 de bonus, moins 0.15 par unité qui reste jusqu'à la base
+            for c in miens:
+                value += 2500 - 0.15 * distance(c.pos, st.my_base)
+            value -= 1500 * (len(porteurs) - len(miens))   # porteurs ennemis
+            radars = [r for r in mine if r.type == "R" and not r.carrying_element]
+            if radars and res.free_batteries and not miens:
+                value -= 0.3 * min(distance(r.pos, b) for r in radars
+                                   for b in res.free_batteries)
 
         # --- 3. tour suivant : danger (K ennemis) et occasions (nos K)
         for k in enemies:

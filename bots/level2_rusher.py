@@ -37,8 +37,9 @@ class RusherBot(Strategy):
         if state.phase == 1:
             if radar.carrying_element:
                 return state.move_towards(radar, state.my_base)
-            if state.element.is_free:
-                return state.move_towards(radar, state.element.pos)
+            battery = state.nearest_battery(radar)
+            if battery:
+                return state.move_towards(radar, battery.pos)
         killers = state.my_robots_of_type("K")
         if killers:
             target = state.clamp_to_zone(killers[0].pos, 2)

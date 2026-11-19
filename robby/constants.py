@@ -23,13 +23,14 @@ DEFAULT_CONFIG = {
     "shield_arc": 90,
     "pickup_radius": 500,
     "base_radius": 700,
-    "phase1_turns": 100,
+    "phase1_turns": 60,
     "phase2_turns": 100,
     "respawn_delay": 5,
     "penalty_turns": 3,
     "kill_points": {"K": 250, "D": 500, "R": 750, "RE": 1000},
-    "capture_points": 0,   # bonus pour avoir ramené la batterie
-    "survivor_points": 0,  # bonus par robot en vie en fin de partie
+    "capture_points": 1000,        # batterie ramenée à la base
+    "survivor_points": 300,        # par robot en vie en fin de partie
+    "battery_respawn_delay": 3,    # tours avant qu'une batterie capturée revienne
     "shield_hp": 3,             # résistance d'un bouclier (tirs arrêtés)
     "shield_break_turns": 4,    # tours sans bouclier quand il est brisé
     "shield_recharge_delay": 3, # tours sans impact avant de regagner 1 point
