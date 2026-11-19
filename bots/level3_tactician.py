@@ -1,344 +1,183 @@
 # bots/level3_tactician.py
-# NIVEAU 3 — « tacticien » : le groupe se déplace ensemble autour du Radar.
-#
-#   Mémoire    : retient la dernière position connue des ennemis.
-#   Défenseur  : garde du corps. Se place entre le Radar et la menace
-#                principale, bouclier tourné vers elle (un tir ennemi vers le
-#                Radar doit alors traverser le bouclier).
-#   Radar      : va chercher l'élément puis rentre, mais attend son garde du
-#                corps et recule si un Destructeur ennemi est trop proche
-#                alors qu'il n'est pas protégé. En phase 2, il prend le centre
-#                et le tient : l'ennemi qui approche est vu avant de nous voir,
-#                et la zone qui rétrécit oblige les autres à venir.
-#   Zone       : en phase 2, le Radar rentre dans la zone sûre avec de l'avance
-#                et le groupe se reforme autour de lui.
-#   Destructeur: tire en priorité sur ce qui menace le Radar, sinon sur la
-#                cible qui rapporte le plus. Sans cible, il reste sur un flanc
-#                du Radar (dans sa zone de vision) au lieu de partir seul et
-#                aveugle.
-#
-# Les ennemis ne sont visibles que près de VOTRE Radar : un Destructeur qui
-# s'en éloigne ne voit plus rien et ne peut plus tirer. Tout le jeu de ce bot
-# repose sur cette idée.
+# NIVEAU 3 : « tacticien ».
+#   - Mémoire : se souvient des ennemis vus récemment (brouillard de guerre).
+#   - Défenseur : se place entre son Radar et la menace la plus proche, bouclier
+#     tourné vers elle (le bouclier arrête les tirs ennemis).
+#   - Destructeur : choisit sa cible (porteur de batterie, puis Radar,
+#     Destructeur, Défenseur) ; si un bouclier protège l'ennemi, va se placer
+#     sur le côté pour tirer au tour suivant ; sinon s'approche juste à portée
+#     de la menace la plus proche, ou escorte son Radar.
+#   - Radar : va chercher la batterie s'il n'est pas menacé, recule derrière
+#     son Défenseur sinon ; en phase 2, reste groupé, au centre de la zone.
 
-from robby import GameState, move, shield, shoot
-from robby.game_state import Position, Robot, distance, step
+from robby import GameState, shield
+from robby.geometry import angle_diff, direction
 from robby.strategy import Strategy
 
-MEMORY_TURNS = 6            # durée de vie d'un ennemi « vu récemment »
-VALUE = {"R": 750, "D": 500, "K": 250}
-
-
-def clamp(state: GameState, pos: Position) -> Position:
-    return (min(max(pos[0], 0), state.map_width - 1),
-            min(max(pos[1], 0), state.map_height - 1))
-
-
-def axis_unit(src: Position, dst: Position) -> tuple[int, int]:
-    """Vecteur unitaire (axe dominant) de src vers dst."""
-    dx, dy = dst[0] - src[0], dst[1] - src[1]
-    if abs(dx) >= abs(dy):
-        return (1 if dx > 0 else -1, 0)
-    return (0, 1 if dy > 0 else -1)
-
-
-SHIELD_OF = {(1, 0): "SR", (-1, 0): "SL", (0, 1): "SD", (0, -1): "SU"}
+MEMORY = 6          # tours pendant lesquels on se souvient d'un ennemi
+DANGER = 4500       # un K ennemi plus près que ça du Radar : menace
+PRIORITY = {"R": 1, "K": 2, "D": 3}
 
 
 class TacticianBot(Strategy):
 
     def __init__(self):
-        self.memory: dict[int, dict] = {}  # id -> {pos, type, team, turn}
+        self.seen = {}      # robot_id -> (type, position, tour)
+        self.killers = {}   # K ennemis : id -> dernière position (sans limite)
+        self.last_known = None   # dernière position ennemie connue (sans limite)
+        self.team_id, self.config = None, {}
 
-    # ------------------------------------------------------------------
-    # Mémoire
-    # ------------------------------------------------------------------
+    def on_game_start(self, team_id, config):
+        self.team_id, self.config = team_id, config
 
     def on_turn_result(self, turn, result):
-        for dead_id in result.get("deaths", []):
-            self.memory.pop(dead_id, None)
+        for robot_id in result.get("deaths", []):
+            self.seen.pop(robot_id, None)
+            self.killers.pop(robot_id, None)
 
-    def remember(self, state: GameState):
-        for e in state.enemies:
-            self.memory[e.id] = {"pos": e.pos, "type": e.type, "team": e.team_id,
-                                 "turn": state.turn,
-                                 "carrying": e.carrying_element,
-                                 "shield": state.shield_cells_of(e)}
-        for eid in [i for i, m in self.memory.items()
-                    if state.turn - m["turn"] > MEMORY_TURNS]:
-            del self.memory[eid]
-
-    def remembered_shields(self, state: GameState) -> set:
-        """Boucliers ennemis vus récemment mais plus visibles (brouillard)."""
-        visible = {e.id for e in state.enemies}
-        cells = set()
-        for eid, m in self.memory.items():
-            if eid not in visible and m["type"] == "D":
-                cells.update(m["shield"])
-        return cells
-
-    def known_enemies(self, of_type=None):
-        return [m for m in self.memory.values()
-                if of_type is None or m["type"] == of_type]
-
-    # ------------------------------------------------------------------
-    # Tour
     # ------------------------------------------------------------------
 
     def decide(self, state: GameState) -> list[dict]:
-        self.remember(state)
-        self.avoid = self.remembered_shields(state)
-        mine = {r.type: r for r in state.my_robots}  # un robot par type (+ K2)
-        killers = state.my_robots_of_type("K")
-        radar, defender = mine.get("R"), mine.get("D")
+        for e in state.enemies:
+            self.seen[e.id] = (e.type, e.pos, state.turn)
+            self.last_known = e.pos
+            if e.type == "K":
+                self.killers[e.id] = e.pos
+        self.seen = {i: v for i, v in self.seen.items() if state.turn - v[2] <= MEMORY}
+        self.threats = [(t, p) for t, p, _ in self.seen.values()]
 
-        commands, taken = [], set()  # taken : cases d'arrivée déjà prises
-
-        anchor = radar.pos if radar else (defender.pos if defender else None)
-        threat = self.main_threat(state, anchor) if anchor else None
-
-        # 1. Radar (il décide où va le groupe)
-        radar_dest = radar.pos if radar else None
-        if radar and radar.can_act:
-            cmd, radar_dest = self.play_radar(state, radar, defender, threat)
-            if cmd:
-                commands.append(cmd)
-        if radar_dest:
-            taken.add(radar_dest)
-
-        # 2. Défenseur : garde du corps du Radar
-        if defender and defender.can_act:
-            cmd = self.play_defender(state, defender, radar_dest, threat, taken)
-            if cmd:
-                commands.append(cmd)
-
-        # 3. Destructeurs
-        for i, k in enumerate(killers):
-            if k.can_act:
-                cmd = self.play_destructor(state, k, radar_dest, threat, taken, i)
-                if cmd:
-                    commands.append(cmd)
+        radars = state.my_robots_of_type("R")
+        self.radar = radars[0] if radars else None
+        commands = []
+        for robot in state.my_robots:
+            if not robot.can_act:
+                continue
+            escape = state.zone_escape(robot)
+            if escape:
+                command = state.move_towards(robot, escape)
+            elif robot.type == "R":
+                command = self.play_radar(state, robot)
+            elif robot.type == "K":
+                command = self.play_destructor(state, robot)
+            else:
+                command = self.play_defender(state, robot)
+            command = state.keep_safe(robot, command)   # tir en roulant : prudence
+            if command:
+                commands.append(command)
         return commands
 
-    # ------------------------------------------------------------------
-    # Menace / objectif
-    # ------------------------------------------------------------------
+    def nearest_threat(self, state, origin, types="RDK"):
+        candidates = [p for t, p in self.threats if t in types]
+        if not candidates:
+            return None
+        return min(candidates, key=lambda p: state.distance(origin, p))
 
-    def main_threat(self, state, anchor) -> Position | None:
-        """Position de la menace principale pour le groupe (K ennemi d'abord)."""
-        ks = self.known_enemies("K")
-        candidates = ks or self.known_enemies()
-        if candidates:
-            return min(candidates, key=lambda m: distance(m["pos"], anchor))["pos"]
-        return None
+    def hunt_point(self, state):
+        """Phase 2 : tenir le centre du prochain cercle. Avec le brouillard de
+        guerre, celui qui attend voit l'autre arriver en premier, et la
+        tempête finit par pousser tout le monde vers ce point."""
+        return state.clamp_to_zone(state.safe_center, 3, inset=1000)
 
-    def group_goal(self, state, radar) -> Position:
-        """Où le groupe doit aller."""
-        if state.phase == 1:
-            if radar and radar.carrying_element:
-                return state.my_base
-            carrier = state.element.carried_by_id
-            if state.element.is_free:
-                return state.element.pos
-            known = [m for m in self.memory.values() if m["carrying"]]
-            if known:
-                return known[0]["pos"]
-            if carrier is None:
-                return state.element.pos
+    def home(self, state):
+        """Point de ralliement : la batterie (phase 1) ou le centre de la zone."""
+        if state.phase == 1 and state.element.is_free:
             return state.element.pos
-        # Phase 2 : aller vers l'ennemi le plus proche connu, sinon une base ennemie
-        known = self.known_enemies()
-        origin = radar.pos if radar else state.my_base
-        if known:
-            return min(known, key=lambda m: distance(m["pos"], origin))["pos"]
-        bases = [state.base_of(int(t)) for t in state.config.get("teams", {})
-                 if int(t) != state.team_id]
-        bases = [b for b in bases if b]
-        if bases:
-            return min(bases, key=lambda b: distance(b, origin))
-        return state.safe_cell
+        return state.clamp_to_zone(state.safe_center, 3)
 
     # ------------------------------------------------------------------
-    # Radar
-    # ------------------------------------------------------------------
 
-    def play_radar(self, state, radar, defender, threat):
-        # Zone (phase 2) : le groupe suit le Radar, il rentre donc en premier,
-        # avec de l'avance (il ne fait qu'une case par tour)
-        escape = state.zone_escape_path(radar, lookahead=3, avoid=self.avoid)
-        if escape:
-            dest = radar.pos
-            for d in escape:
-                dest = step(dest, d)
-            return move(radar, *escape), dest
-        goal = state.clamp_to_zone(self.group_goal(state, radar), 3)
-        guarded = defender is not None and defender.distance_to(radar) <= 1
-        danger = [e for e in state.enemies
-                  if e.type == "K" and radar.distance_to(e) <= 4]
+    def play_radar(self, state, radar):
+        # Un K ennemi qui campe reste dangereux même s'il n'est plus visible :
+        # on se souvient de sa dernière position sans limite de temps.
+        danger = self.nearest_threat(state, radar, "K")
+        if self.killers and state.phase == 2:
+            remembered = min(self.killers.values(),
+                             key=lambda p: state.distance(radar, p))
+            if danger is None or state.distance(radar, remembered) < \
+                    state.distance(radar, danger):
+                danger = remembered
+        threatened = danger and state.distance(radar, danger) < DANGER
+        if state.phase == 1 and radar.carrying_element:
+            return state.move_towards(radar, state.my_base)
+        if threatened:
+            defenders = state.my_robots_of_type("D")
+            if defenders:   # se cacher derrière le Défenseur (qui avance en phase 2)
+                d = defenders[0]
+                away = d.angle_to(danger)
+                dx, dy = direction((away + 180) % 360) if away is not None else (0, 0)
+                hide = state.clamp_to_zone((d.x + dx * 700, d.y + dy * 700), 2)
+                return state.move_towards(radar, hide)
+            return state.move_away(radar, danger)
+        if state.phase == 1 and state.element.is_free:
+            return state.move_towards(radar, state.element.pos)
+        if state.phase == 2:   # le Radar mène la chasse, les autres l'escortent
+            if self.last_known is not None and state.distance(radar,
+                                                              self.last_known) < 1000:
+                self.last_known = None     # plus personne ici
+            return state.move_towards(radar, self.hunt_point(state))
+        killers = state.my_robots_of_type("K")
+        target = killers[0].pos if killers else self.home(state)
+        return state.move_towards(radar, state.clamp_to_zone(target, 3), stop_at=1500)
 
-        # Exposé sans garde : reculer vers la base (sauf s'il porte l'élément,
-        # auquel cas rentrer EST la retraite)
-        if danger and not guarded and not radar.carrying_element:
-            k = state.nearest(radar, danger)
-            options = [d for d in state.possible_moves(radar)
-                       if step(radar.pos, d) not in self.avoid]
-            # repli vers la base en phase 1, vers le centre en phase 2 (zone)
-            home = state.my_base if state.phase == 1 else \
-                state.safe_cell
-            options = [d for d in options if state.in_zone(step(radar.pos, d), 2)]
-            if options:
-                best = max(options, key=lambda d: (
-                    distance(step(radar.pos, d), k.pos),
-                    -distance(step(radar.pos, d), home)))
-                if distance(step(radar.pos, best), k.pos) > radar.distance_to(k):
-                    return move(radar, best), step(radar.pos, best)
-            return None, radar.pos
+    def killer_threat(self, state, origin):
+        """K ennemi le plus proche : visible, récent ou mémorisé (sans limite)."""
+        known = [p for t, p in self.threats if t == "K"] + list(self.killers.values())
+        if not known:
+            return None
+        return min(known, key=lambda p: state.distance(origin, p))
 
-        # Phase 2 : prendre le centre puis le tenir. Avec le brouillard de
-        # guerre, celui qui attend voit l'autre arriver en premier ; et comme
-        # la zone rétrécit vers le centre, ce sont les autres qui devront venir.
+    def play_defender(self, state, d):
+        protect = self.radar.pos if self.radar else d.pos
         if state.phase == 2:
-            center = state.safe_cell
-            if radar.distance_to(center) <= 1:
-                return None, radar.pos
-            goal = center
-
-        # Attendre le garde du corps s'il est loin (sauf porteur de l'élément)
-        if defender is not None and defender.distance_to(radar) > 2 \
-                and not radar.carrying_element:
-            return None, radar.pos
-
-        path = state.path_towards(radar, goal, self.avoid)
-        if not path:
-            return None, radar.pos
-        dest = radar.pos
-        for d in path:
-            dest = step(dest, d)
-        return move(radar, *path), dest
-
-    # ------------------------------------------------------------------
-    # Défenseur
-    # ------------------------------------------------------------------
-
-    def guard_cell(self, state, radar_dest, threat) -> Position:
-        towards = threat or state.safe_cell
-        if towards == radar_dest:
-            towards = state.my_base
-        ux, uy = axis_unit(radar_dest, towards)
-        return clamp(state, (radar_dest[0] + ux, radar_dest[1] + uy))
-
-    def play_defender(self, state, d, radar_dest, threat, taken):
-        if not state.in_zone(d.pos, 1):
-            path = state.zone_escape_path(d, 1, self.avoid, taken)
-            if path:
-                taken.add(state.destination(d, path))
-                return move(d, *path)
-        if radar_dest is None:  # plus de Radar : se battre aux côtés des K
-            enemy = state.nearest(d, state.enemies)
-            if enemy:
-                wanted = SHIELD_OF[axis_unit(d.pos, enemy.pos)]
-                if wanted != d.shield_direction and d.shield_ready:
-                    return shield(d, wanted)
+            threat = self.killer_threat(state, protect) or \
+                self.nearest_threat(state, protect)
+        else:
+            threat = self.nearest_threat(state, protect, "K") or \
+                self.nearest_threat(state, protect)
+        if threat is None:
+            target = self.radar or self.home(state)
+            return state.move_towards(d, state.clamp_to_zone(
+                target.pos if hasattr(target, "pos") else target, 2), stop_at=800)
+        wanted = d.angle_to(threat) if d.shield_ready else None
+        if wanted is not None and (d.shield_direction is None
+                                   or angle_diff(wanted, d.shield_direction) > 25):
+            return shield(d, angle=wanted)
+        if state.phase == 2 and self.radar is not None:
+            # Avancée escortée : le Défenseur ouvre la route vers la menace,
+            # bouclier devant (il continue de rouler quand il le tourne), à
+            # la vitesse du Radar qui le suit ; il l'attend s'il s'en éloigne.
+            if state.distance(d, self.radar) > 1300:
+                return state.move_towards(d, self.radar, stop_at=700)
+            return state.move_towards(d, state.clamp_to_zone(threat, 2),
+                                      speed=state.max_speed(self.radar),
+                                      stop_at=2200)
+        # se placer à 700 du Radar, du côté de la menace (le bouclier suit)
+        heading = state.aim(self.radar, threat) if self.radar else None
+        if heading is None:
             return None
+        dx, dy = direction(heading)
+        spot = state.clamp_to_zone((protect[0] + dx * 700, protect[1] + dy * 700), 2)
+        return state.move_towards(d, spot)
 
-        cell = state.clamp_to_zone(self.guard_cell(state, radar_dest, threat), 2)
-        towards = threat or state.safe_cell
-        wanted = SHIELD_OF[axis_unit(d.pos if d.pos == cell else cell, towards)] \
-            if towards != cell else d.shield_direction
-
-        if d.pos == cell or (d.distance_to(cell) <= 1 and cell in taken):
-            taken.add(d.pos)
-            if wanted and wanted != d.shield_direction and d.shield_ready:
-                return shield(d, wanted)
-            return None
-
-        path = state.path_towards(d, cell, self.avoid)
-        path = self.avoid_taken(d, path, taken)
-        if not path:
-            taken.add(d.pos)
-            if wanted and wanted != d.shield_direction and d.shield_ready:
-                return shield(d, wanted)
-            return None
-        return move(d, *path)
-
-    # ------------------------------------------------------------------
-    # Destructeur
-    # ------------------------------------------------------------------
-
-    def target_value(self, state, target: Robot, radar_dest) -> int:
-        value = VALUE.get(target.type, 0)
-        if target.type == "R" and target.carrying_element:
-            value = 1000
-        # Un K ennemi proche de notre Radar est la priorité absolue
-        if target.type == "K" and radar_dest and distance(target.pos, radar_dest) <= 6:
-            value += 1000
-        return value
-
-    def play_destructor(self, state, k, radar_dest, threat, taken, index):
-        # Hors zone (maintenant ou au prochain tour) : fuir d'abord, tirer ensuite
-        if not state.in_zone(k.pos, 1):
-            path = state.zone_escape_path(k, 1, self.avoid, taken)
-            if path:
-                taken.add(state.destination(k, path))
-                return move(k, *path)
+    def play_destructor(self, state, k):
         targets = state.targets_in_range(k)
         if targets:
-            best = max(targets, key=lambda t: (self.target_value(state, t, radar_dest),
-                                               -k.distance_to(t)))
-            taken.add(k.pos)
-            return shoot(k, best)
-        # Ennemi à portée mais derrière un bouclier : tirer quand même l'use,
-        # et il se brise au bout de quelques tirs (anti-blocage)
+            best = min(targets, key=lambda e: (not e.carrying_element,
+                                               PRIORITY[e.type], state.distance(k, e)))
+            return state.shoot_at(k, best)
+        # Ennemi à portée mais derrière un bouclier : tirer quand même l'use, et
+        # il se brise au bout de quelques tirs. Sinon, contourner le bouclier
+        # d'un ennemi visible plus loin pour pouvoir tirer au tour suivant.
         shielded = state.shielded_targets(k)
-        if shielded and state.phase == 2:
-            taken.add(k.pos)
-            return shoot(k, state.nearest(k, shielded))
-
-        # Pas de cible : rester sur un flanc du Radar. Tout ce que le Radar
-        # voit (3 cases) est alors presque toujours à portée de tir, et on ne
-        # s'avance jamais là où un ennemi nous verrait sans être vu.
-        if radar_dest is not None:
-            towards = threat or self.group_goal(state, None)
-            if towards == radar_dest:
-                towards = state.safe_cell
-            ux, uy = axis_unit(radar_dest, towards)
-            px, py = (-uy, ux) if index % 2 == 0 else (uy, -ux)  # flanc gauche/droit
-            goal = (radar_dest[0] + px, radar_dest[1] + py)
-            if not state.is_inside(goal):  # contre un bord : l'autre flanc
-                goal = (radar_dest[0] - px, radar_dest[1] - py)
-            goal = state.clamp_to_zone(clamp(state, goal), 2)
-        else:
-            # Radar perdu : chasser à l'aveugle les ennemis mémorisés
-            known = self.known_enemies()
-            goal = (min(known, key=lambda m: distance(m["pos"], k.pos))["pos"]
-                    if known else self.group_goal(state, None))
-            goal = state.clamp_to_zone(goal, 2)
-
-        path = state.path_towards(k, goal, self.avoid)
-        # garde-fou : ne jamais finir son déplacement dans la tempête
-        while path and not state.in_zone(state.destination(k, path), 1):
-            path.pop()
-        path = self.avoid_taken(k, path, taken)
-        if not path:
-            taken.add(k.pos)
-            return None
-        return move(k, *path)
-
-    # ------------------------------------------------------------------
-    # Outils
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def avoid_taken(robot, path, taken) -> list[str]:
-        """Raccourcit le chemin pour ne pas viser une case déjà visée par un
-        allié (deux robots qui visent la même case ne bougent pas)."""
-        path = list(path)
-        while path:
-            dest = robot.pos
-            for d in path:
-                dest = step(dest, d)
-            if dest not in taken:
-                taken.add(dest)
-                return path
-            path.pop()
-        return path
+        if shielded:
+            return state.shoot_at(k, min(shielded, key=lambda e: state.distance(k, e)))
+        for enemy in sorted(state.enemies, key=lambda e: (PRIORITY[e.type],
+                                                          state.distance(k, e))):
+            spot = state.firing_spot(k, enemy)
+            if spot:
+                return state.move_towards(k, spot)
+        threat = self.nearest_threat(state, k)
+        if threat:
+            return state.move_towards(k, state.clamp_to_zone(threat, 2), stop_at=2600)
+        escort = self.radar.pos if self.radar else self.home(state)
+        return state.move_towards(k, state.clamp_to_zone(escort, 2), stop_at=1000)

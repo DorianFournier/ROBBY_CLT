@@ -1,5 +1,5 @@
-# bots/free_simulator.py
-# MODE LIBRE — NIVEAU 4 : « simulateur ».
+# bots/level4_simulator.py
+# NIVEAU 4 : « simulateur ».
 #
 # Au lieu de règles fixes (« si ... alors ... »), ce bot ESSAIE des plans et
 # garde le meilleur. À chaque tour :
@@ -23,8 +23,8 @@
 # Nombre de simulations borné (MAX_EVALS) : le temps de réflexion reste
 # court, et le bot est reproductible (pas de limite en secondes).
 
-from bots.free_tactician import FreeTacticianBot
-from robby import FreeGameState, move, shield
+from bots.level3_tactician import TacticianBot
+from robby import GameState, move, shield
 from robby.geometry import angle_to, direction, distance
 from robby.simulator import SimRobot, TurnSimulator
 from robby.strategy import Strategy
@@ -47,11 +47,10 @@ SHIELD_WEAR = 120    # un point retiré à un bouclier ennemi
 SHIELD_BREAK = 350   # bouclier ennemi brisé (indisponible plusieurs tours)
 
 
-class FreeSimulatorBot(Strategy):
-    modes = ("libre",)
+class SimulatorBot(Strategy):
 
     def __init__(self):
-        self.scout = FreeTacticianBot()   # plan de départ + point de chasse
+        self.scout = TacticianBot()   # plan de départ + point de chasse
         self.memory = {}                  # id -> (team, type, pos, tour, bouclier)
         self.evals = 0
 
@@ -67,7 +66,7 @@ class FreeSimulatorBot(Strategy):
     # Décision
     # ==================================================================
 
-    def decide(self, state: FreeGameState) -> list[dict]:
+    def decide(self, state: GameState) -> list[dict]:
         self.state = state
         self.me = state.team_id
         base_plan = {c["robot_id"]: c for c in self.scout.decide(state)}

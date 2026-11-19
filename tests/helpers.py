@@ -1,4 +1,4 @@
-from robby import FreeGameState, GameState
+from robby import GameState
 
 
 def robot(id, team, type, x, y, alive=True, shield=None, carrying=False, penalty=0,
@@ -8,21 +8,12 @@ def robot(id, team, type, x, y, alive=True, shield=None, carrying=False, penalty
             "heading": heading, "speed": speed}
 
 
-def make_state(robots, team_id=1, phase=1, element=(7, 7), carried_by=None):
-    msg = {
-        "type": "game_state", "turn": 1, "phase": phase, "phase_turn": 1,
-        "robots": robots,
-        "element": {"x": element[0], "y": element[1], "carried_by_id": carried_by},
-    }
-    return GameState(msg, team_id, {"map_width": 15, "map_height": 15})
-
-
-def make_free_state(robots, team_id=1, phase=1, element=(7500, 7500), carried_by=None,
-                    zone=None, turn=1):
-    """État du mode libre (positions en unités)."""
+def make_state(robots, team_id=1, phase=1, element=(7500, 7500), carried_by=None,
+               zone=None, turn=1):
+    """État du jeu vu par `team_id` (positions en unités)."""
     msg = {
         "type": "game_state", "turn": turn, "phase": phase, "phase_turn": turn,
         "robots": robots, "zone": zone,
         "element": {"x": element[0], "y": element[1], "carried_by_id": carried_by},
     }
-    return FreeGameState(msg, team_id, {"mode": "libre"})
+    return GameState(msg, team_id, {})
