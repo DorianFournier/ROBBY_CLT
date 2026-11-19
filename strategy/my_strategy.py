@@ -10,7 +10,7 @@
 #
 # Commandes (au plus UNE par robot et par tour) :
 #   move(robot, angle=90, speed=2000)   règle le CAP et la VITESSE du robot
-#                                       (max par tour : R 1000, D 2000, K 5000)
+#                                       (max par tour : R 1500, D 2000, K 3000)
 #   stop(robot)                         vitesse 0
 #   shoot(destructeur, angle=45)        rayon de 3000 : touche le 1er ennemi
 #   shield(defenseur, angle=180)        bouclier de 90° tourné vers l'angle

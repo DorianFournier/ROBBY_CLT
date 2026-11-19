@@ -16,20 +16,20 @@ def run(robots, commands, **state_options):
 
 def test_move_goes_speed_units_and_slides_along_borders():
     res = run([robot(13, 1, "K", 5000, 5000), robot(23, 2, "K", 1000, 1000)],
-              {1: [move(13, angle=90, speed=4000)],
-               2: [move(23, angle=45, speed=5000)]})
-    assert res.robot(13).pos == pytest.approx((9000, 5000))
+              {1: [move(13, angle=90, speed=3000)],
+               2: [move(23, angle=45, speed=3000)]})
+    assert res.robot(13).pos == pytest.approx((8000, 5000))
     assert res.robot(23).y == pytest.approx(300)      # bloqué en haut...
-    assert res.robot(23).x > 4000                      # ...mais glisse
+    assert res.robot(23).x > 3000                      # ...mais glisse
 
 
 def test_enemies_block_allies_pass_through():
     res = run([robot(13, 1, "K", 5000, 5000), robot(11, 1, "R", 7000, 5000),
-               robot(21, 2, "R", 5000, 9000), robot(23, 2, "K", 7000, 9000)],
-              {1: [move(13, angle=90, speed=5000)],
-               2: [move(21, angle=90, speed=1000)]})
-    assert res.robot(13).x == pytest.approx(10000)     # traverse son Radar
-    assert res.robot(21).x <= 7000 - 600 + 1           # arrêté devant le K
+               robot(21, 2, "R", 5000, 9000), robot(14, 1, "K", 7000, 9000)],
+              {1: [move(13, angle=90, speed=3000)],
+               2: [move(21, angle=90, speed=1500)]})
+    assert res.robot(13).x == pytest.approx(8000)      # traverse son Radar
+    assert res.robot(21).x <= 7000 - 600 + 1           # arrêté devant le K ennemi
 
 
 def test_shots_first_enemy_and_shields():

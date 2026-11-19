@@ -17,7 +17,7 @@ DEFAULT_CONFIG = {
     "map_height": 15000,
     "radar_range": 3000,
     "destructor_range": 3000,
-    "move_speed": {"R": 1000, "D": 2000, "K": 5000},   # vitesse max par tour
+    "move_speed": {"R": 1500, "D": 2000, "K": 3000},   # vitesse max par tour
     "robot_radius": 300,
     "shield_radius": 1500,
     "shield_arc": 90,
@@ -25,10 +25,10 @@ DEFAULT_CONFIG = {
     "base_radius": 700,
     "phase1_turns": 60,
     "phase2_turns": 100,
-    "respawn_delay": 5,
+    "respawn_delay": 3,
     "penalty_turns": 3,
     "kill_points": {"K": 250, "D": 500, "R": 750, "RE": 1000},
-    "capture_points": 1000,        # batterie ramenée à la base
+    "capture_points": 500,         # batterie ramenée à la base
     "survivor_points": 300,        # par robot en vie en fin de partie
     "battery_respawn_delay": 3,    # tours avant qu'une batterie capturée revienne
     "shield_hp": 3,             # résistance d'un bouclier (tirs arrêtés)

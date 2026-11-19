@@ -59,9 +59,9 @@ uv run pytest
 
 | Type | Nom | Vitesse max par tour | Capacité |
 |---|---|---|---|
-| `R` | Radar | 1000 | Voit les ennemis à moins de 3000. Seul robot pouvant ramasser une batterie. |
+| `R` | Radar | 1500 | Voit les ennemis à moins de 3000. Seul robot pouvant ramasser une batterie. |
 | `D` | Défenseur | 2000 | Pose un bouclier : une part de tarte de 90° et de rayon 1500. |
-| `K` | Destructeur | 5000 | Tire un rayon de 3000 qui touche le premier ennemi rencontré. |
+| `K` | Destructeur | 3000 | Tire un rayon de 3000 qui touche le premier ennemi rencontré. |
 
 **Brouillard de guerre** : vous ne voyez que vos robots et les ennemis détectés
 par **vos** radars. Un radar détruit, c'est une équipe aveugle.
@@ -151,11 +151,11 @@ de deux équipes voisines : une au centre à 2 équipes, deux à 3 équipes, qua
 à 4 équipes. Un Radar ramasse une batterie en passant à moins de 500 unités,
 et n'en porte qu'une à la fois.
 
-**Chaque batterie ramenée dans votre base rapporte 1000 points.** Elle
+**Chaque batterie ramenée dans votre base rapporte 500 points.** Elle
 disparaît, puis **réapparaît à sa place 3 tours plus tard** : faites autant
 d'allers-retours que possible pendant les 60 tours ! Si le porteur est
 détruit, la batterie tombe là où il est mort. Un robot détruit pendant cette
-phase réapparaît près de sa base 5 tours plus tard.
+phase réapparaît près de sa base 3 tours plus tard.
 
 ### Phase 2 — Match à mort (100 tours au maximum)
 
@@ -190,7 +190,7 @@ nouveau centre. Regardez donc où le prochain cercle est annoncé
 
 **Un robot dont le centre est hors du cercle à la fin d'un tour est détruit.**
 Le cercle est rond : les coins tombent avant le milieu des bords. La tempête
-avance moins vite que le Radar, mais il n'avance que de 1000 par tour : partez
+avance moins vite que le Radar, mais il n'avance que de 1500 par tour : partez
 à temps ! Et attention à l'élan : un robot qui tire en roulant peut finir
 dehors. `state.keep_safe(robot, commande)` remplace la commande par un écart
 si c'est le cas.
@@ -218,7 +218,7 @@ détruits.
 
 | Ce qui rapporte | Points |
 |---|---|
-| Batterie ramenée à votre base | 1000 chaque fois |
+| Batterie ramenée à votre base | 500 chaque fois |
 | Destructeur `K` ennemi détruit | 250 |
 | Défenseur `D` ennemi détruit | 500 |
 | Radar `R` ennemi détruit | 750 |
@@ -307,15 +307,15 @@ au plus fort. Le but est de les battre l'un après l'autre.
 | `bot3` | `TacticianBot` | « Tacticien » : il se souvient des ennemis vus, son Radar se cache derrière le Défenseur quand un Destructeur ennemi menace. En phase 2, il tient le centre du prochain cercle (celui qui attend voit l'autre arriver en premier), avance derrière son Défenseur, contourne les boucliers ennemis pour tirer de côté, ou les use. |
 | `bot4` | `SimulatorBot` | « Simulateur » : il essaie des centaines de plans dans un simulateur de tour et garde le meilleur (voir plus bas). |
 
-Mesuré sur 200 parties par duel (côtés alternés, une commande sur dix perdue
+Mesuré sur 150 parties par duel (côtés alternés, une commande sur dix perdue
 au hasard pour que les parties soient toutes différentes). Score : victoire 1,
 nul 0,5, défaite 0 :
 
 | Duel | Score du premier |
 |---|---|
-| bot3 contre bot2 | 0,78 |
-| bot4 contre bot3 | 0,85 |
-| bot4 contre bot2 | 0,90 |
+| bot3 contre bot2 | 0,64 |
+| bot4 contre bot3 | 0,87 |
+| bot4 contre bot2 | 0,83 |
 
 Lire leur code (`bots/level2_rusher.py`, `bots/level3_tactician.py`...) est une
 bonne source d'idées... mais pour les battre, il faudra faire mieux !
@@ -351,7 +351,7 @@ poids de `evaluate`, ajouter des candidats, prévoir deux tours à l'avance...
 ### Le simulateur de tour : tester ses coups avant de jouer
 
 `robby/simulator.py` refait les calculs du serveur (mêmes règles, même ordre)
-sur ce que vous voyez. Sur 2508 tours de vraies parties (2 à 4 équipes), il a
+sur ce que vous voyez. Sur 2490 tours de vraies parties (2 à 4 équipes), il a
 donné exactement les mêmes positions, destructions, boucliers et batteries que
 le serveur. Vous pouvez
 l'utiliser dans votre propre stratégie :

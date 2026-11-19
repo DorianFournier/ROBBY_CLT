@@ -7,8 +7,8 @@
 #     (comme une boussole) ; -90 et 270 sont le même angle.
 #
 #   move(robot, angle=90, speed=2000)   règle le CAP et la VITESSE du robot
-#                                       (0 <= speed <= max : R 1000, D 2000,
-#                                       K 5000 unités par tour). Le robot les
+#                                       (0 <= speed <= max : R 1500, D 2000,
+#                                       K 3000 unités par tour). Le robot les
 #                                       garde : il continue d'avancer tout seul
 #                                       aux tours suivants, même s'il tire ou
 #                                       pose son bouclier. speed=0 : il s'arrête.
@@ -34,7 +34,7 @@ def _angle(angle) -> float:
 def move(robot, angle, speed) -> dict:
     """
     Règle le cap (`angle`) et la vitesse (`speed`, en unités par tour, au plus
-    R 1000, D 2000, K 5000) du robot. Il les GARDE : il continue d'avancer
+    R 1500, D 2000, K 3000) du robot. Il les GARDE : il continue d'avancer
     dans cette direction à chaque tour, jusqu'à une nouvelle commande MOVE,
     un blocage (ennemi, bouclier ennemi) ou une pénalité. speed=0 l'arrête.
         move(radar, angle=90, speed=1000)    # vers la droite, à fond
