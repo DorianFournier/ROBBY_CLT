@@ -249,7 +249,7 @@ class GameState:
     # ------------------------------------------------------------------
 
     def max_speed(self, robot) -> float:
-        """Distance maximale parcourue en un tour (R 1000, D 2000, K 5000)."""
+        """Distance maximale parcourue en un tour (R 1500, D 2000, K 3000)."""
         return self.config["move_speed"].get(robot.type, 0)
 
     speed = max_speed

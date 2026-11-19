@@ -293,8 +293,10 @@ class TurnSimulator:
             for rid in proposed:
                 if robots[rid].type != "R" or robots[rid].carrying_element:
                     continue
+                # positions arrondies au dixième, comme le trajet du serveur
+                arrondi = (round(pos[rid][0], 1), round(pos[rid][1], 1))
                 for b in libres:
-                    d = distance(pos[rid], b[1])
+                    d = distance(arrondi, b[1])
                     if (rid, b[0]) not in touches and d <= self.pickup:
                         touches[(rid, b[0])] = (step + 1, d)
         for rid, p in pos.items():

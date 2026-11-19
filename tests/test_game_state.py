@@ -45,7 +45,7 @@ def test_move_towards_stops_on_target_and_respects_max_speed():
     cmd = state.move_towards(r, (1600, 7500))
     assert cmd["angle"] == pytest.approx(90) and cmd["speed"] == pytest.approx(600)
     cmd = state.move_towards(k, (1000, 14000))
-    assert cmd["angle"] == pytest.approx(180) and cmd["speed"] == 5000
+    assert cmd["angle"] == pytest.approx(180) and cmd["speed"] == 3000
     assert state.move_towards(r, (1000, 7500)) is None
     cmd = state.move_towards(k, (1000, 4000), stop_at=2500)
     assert cmd["speed"] == pytest.approx(500)
@@ -58,7 +58,7 @@ def test_check_commands():
     ok = [move(11, angle=10, speed=1000), shield(12, angle=0),
           shoot(13, angle=90)]
     assert check_commands(state, ok) == []
-    bad = [move(11, angle=10, speed=1001), {"robot_id": 12, "action": "SHIELD"},
+    bad = [move(11, angle=10, speed=1501), {"robot_id": 12, "action": "SHIELD"},
            {"robot_id": 13, "action": "SHOOT"}]
     assert len(check_commands(state, bad)) == 3
 
