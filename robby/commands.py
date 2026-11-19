@@ -12,7 +12,13 @@
 #   - SHIELD : Défenseur (D) uniquement
 #
 # MODE LIBRE (V2) : mêmes fonctions, avec des mots-clés
-#   move(robot, angle=90, speed=2000)   0 <= speed <= max (R 1000, D 2000, K 5000)
+#   move(robot, angle=90, speed=2000)   règle le CAP et la VITESSE du robot
+#                                       (0 <= speed <= max : R 1000, D 2000,
+#                                       K 5000 unités par tour). Le robot les
+#                                       garde : il continue d'avancer tout seul
+#                                       aux tours suivants, même s'il tire ou
+#                                       pose son bouclier. speed=0 : il s'arrête.
+#   stop(robot)                         = move(robot, angle=0, speed=0)
 #   shoot(k, angle=45)                  rayon : touche le 1er ennemi rencontré
 #   shield(d, angle=180)                secteur de 90° centré sur l'angle
 #   Angles en degrés, sens horaire, 0 = haut, 90 = droite (boussole).
@@ -41,8 +47,11 @@ def move(robot, *directions: str, angle=None, speed=None) -> dict:
     On peut aussi passer une liste : move(k, *chemin)
 
     Mode libre : move(robot, angle=90, speed=2000)
-        le robot part dans la direction `angle` et parcourt `speed` unités
-        (au plus R 1000, D 2000, K 5000).
+        règle le cap (`angle`) et la vitesse (`speed`, en unités par tour, au
+        plus R 1000, D 2000, K 5000). Le robot les GARDE : il continue
+        d'avancer dans cette direction à chaque tour, jusqu'à une nouvelle
+        commande MOVE, un blocage (ennemi, bouclier ennemi) ou une pénalité.
+        speed=0 l'arrête.
     """
     if angle is not None or speed is not None:
         if directions:
@@ -86,3 +95,8 @@ def shield(robot, direction: str | None = None, *, angle=None) -> dict:
     if direction not in SHIELD_DIRECTIONS:
         raise ValueError(f"Direction de bouclier inconnue : {direction!r}")
     return {"robot_id": _robot_id(robot), "action": "SHIELD", "direction": direction}
+
+
+def stop(robot) -> dict:
+    """Mode libre : arrête le robot (vitesse 0)."""
+    return move(robot, angle=0, speed=0)

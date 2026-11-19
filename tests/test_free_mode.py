@@ -164,3 +164,40 @@ def test_moving_storm_center_is_followed_by_the_tools():
     assert not state.in_zone((2000, 7500), lookahead=2)   # le cercle s'éloigne
     escape = state.zone_escape(state.get_robot(11))
     assert escape is not None and escape[0] > 2000
+
+
+# ---------------------------------------------------------------- mouvement continu
+
+def test_robots_know_their_heading_and_speed():
+    state = make_free_state([robot(13, 1, "K", 2000, 5000, heading=90, speed=3000),
+                             robot(11, 1, "R", 6000, 6000)])
+    k, r = state.get_robot(13), state.get_robot(11)
+    assert k.moving and (k.heading, k.speed) == (90, 3000)
+    assert not r.moving
+    assert state.predict(k) == pytest.approx((5000, 5000))
+    assert state.predict(k, 2) == pytest.approx((8000, 5000))
+    assert state.predict(r) == (6000, 6000)
+
+
+def test_stop_command_and_move_towards_stops_on_arrival():
+    from robby import stop
+    assert stop(13) == {"robot_id": 13, "action": "MOVE", "angle": 0.0, "speed": 0.0}
+    state = make_free_state([robot(11, 1, "R", 4000, 4000, heading=90, speed=500),
+                             robot(12, 1, "R", 5000, 5000)])
+    moving, still = state.get_robot(11), state.get_robot(12)
+    assert state.move_towards(moving, (4000, 4000))["speed"] == 0   # arrivé : stop
+    assert state.move_towards(still, (5000, 5000)) is None          # déjà arrêté
+    assert state.stop(still) is None
+
+
+def test_keep_safe_refuses_to_coast_into_the_storm():
+    zone = storm(5000)
+    state = make_free_state([robot(13, 1, "K", 7500, 3000, heading=0, speed=2000),
+                             robot(23, 2, "R", 7500, 5000)], phase=2, zone=zone)
+    k = state.get_robot(13)
+    assert not state.safe_to_coast(k)
+    command = state.keep_safe(k, state.shoot_at(k, state.get_robot(23)))
+    assert command["action"] == "MOVE"                 # s'écarter d'abord
+    k.heading = 180                                    # vers le centre : sans danger
+    shot = state.shoot_at(k, state.get_robot(23))
+    assert state.keep_safe(k, shot) == shot

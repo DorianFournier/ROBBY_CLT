@@ -393,7 +393,9 @@ Pour une stratégie qui sait jouer les deux modes, déclarez
   `angle = math.degrees(math.atan2(bx - ax, -(by - ay))) % 360`, ou plus
   simplement `robot.angle_to(B)`.
 - Vitesse maximale par tour : Radar 1000, Défenseur 2000, Destructeur 5000.
-- Les robots sont des disques de rayon 300. Un robot s'arrête s'il allait
+- `MOVE` règle le **cap et la vitesse** du robot, qu'il garde aux tours
+  suivants (voir plus bas).
+- Les robots sont des disques de rayon 300. Un robot s'arrête net s'il allait
   toucher un **ennemi** ou entrer dans un bouclier ennemi. Il traverse ses
   alliés et glisse le long des bords.
 - **Tir** : un rayon instantané de 3000 unités, tiré depuis la position du
@@ -410,18 +412,39 @@ Pour une stratégie qui sait jouer les deux modes, déclarez
 ### Commandes
 
 ```python
-from robby import move, shoot, shield
+from robby import move, shoot, shield, stop
 
-move(robot, angle=90, speed=2000)   # vers la droite, 2000 unités
+move(robot, angle=90, speed=2000)   # cap à droite, 2000 unités par tour
+stop(robot)                         # vitesse 0
 shoot(k, angle=state.aim(k, cible)) # ou : state.shoot_at(k, cible)
 shield(d, angle=180)                # bouclier tourné vers le bas
 ```
+
+**`move` règle un cap et une vitesse, comme un volant et un accélérateur.**
+Le robot les **garde** d'un tour à l'autre : sans nouvelle commande, il
+continue d'avancer tout seul dans la même direction. Il continue aussi quand il
+tire (K) ou tourne son bouclier (D), puisqu'on n'envoie qu'une commande par
+robot et par tour. Il s'arrête seulement :
+
+- si vous lui envoyez `stop(robot)` (ou une vitesse 0) ;
+- s'il allait heurter un robot ennemi ou entrer dans un bouclier ennemi
+  (il s'arrête net, vitesse 0) ;
+- s'il est pénalisé (moteurs coupés).
+
+Contre un bord de l'arène, il glisse le long du mur en gardant son cap.
+`robot.heading` et `robot.speed` donnent le cap et la vitesse actuels, y
+compris ceux des ennemis visibles : `state.predict(ennemi)` dit où il sera au
+tour suivant s'il continue. Attention à la tempête : un robot qui tire en
+roulant peut finir dehors. `state.keep_safe(robot, commande)` remplace la
+commande par un écart si c'est le cas.
 
 ### Outils de `FreeGameState`
 
 | Méthode | Description |
 |---|---|
-| `state.move_towards(robot, point, stop_at=0)` | commande MOVE toute prête vers un point ou un robot, à la vitesse max sans dépasser le point visé, en s'arrêtant à `stop_at` unités |
+| `state.move_towards(robot, point, stop_at=0)` | commande MOVE toute prête vers un point ou un robot, à la vitesse max sans dépasser le point visé ce tour-ci, en s'arrêtant à `stop_at` unités ; une fois arrivé, commande d'arrêt (sinon le robot continuerait) |
+| `state.stop(robot)`, `state.predict(robot, tours)` | commande d'arrêt (None si déjà arrêté) ; position future si le robot garde son cap |
+| `state.safe_to_coast(robot)`, `state.keep_safe(robot, commande)` | sur sa lancée, reste-t-il hors de la tempête ? ; garder un tir ou un bouclier seulement si c'est le cas |
 | `state.move_away(robot, menace)` | commande MOVE pour s'éloigner |
 | `state.distance(a, b)`, `robot.distance_to(x)`, `robot.angle_to(x)` | distance à vol d'oiseau, angle |
 | `state.max_speed(robot)` | vitesse maximale du robot |

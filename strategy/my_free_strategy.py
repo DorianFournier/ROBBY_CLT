@@ -8,12 +8,23 @@
 #   Arène  : 15000 x 15000 unités, y vers le BAS
 #
 # Commandes (au plus UNE par robot et par tour) :
-#   move(robot, angle=90, speed=2000)   vitesse max : R 1000, D 2000, K 5000
+#   move(robot, angle=90, speed=2000)   règle le CAP et la VITESSE du robot
+#                                       (max par tour : R 1000, D 2000, K 5000)
+#   stop(robot)                         vitesse 0
 #   shoot(destructeur, angle=45)        rayon de 3000 : touche le 1er ennemi
 #   shield(defenseur, angle=180)        bouclier de 90° tourné vers l'angle
 #
+# ATTENTION : un robot GARDE son cap et sa vitesse d'un tour à l'autre. Sans
+# nouvelle commande (ou s'il tire, s'il pose son bouclier), il continue
+# d'avancer tout seul ! Il ne s'arrête que si vous le lui demandez (stop),
+# s'il heurte un ennemi ou un bouclier ennemi, ou s'il est pénalisé.
+# robot.heading et robot.speed : son cap et sa vitesse actuels.
+#
 # Outils utiles de `state` (voir robby/free_state.py et le README) :
 #   state.move_towards(robot, point)    commande toute prête pour y aller
+#                                       (et pour s'arrêter une fois arrivé)
+#   state.predict(robot, tours)         où il sera s'il garde son cap
+#   state.keep_safe(robot, commande)    tirer en roulant, sauf vers la tempête
 #   state.targets_in_range(k)           ennemis qu'un tir toucherait
 #   state.shoot_at(k, cible)            commande de tir visée sur la cible
 #   state.aim(k, cible), state.distance(a, b), robot.angle_to(cible)
@@ -60,7 +71,8 @@ class MyFreeStrategy(Strategy):
                 return state.move_towards(radar, state.my_base)
             if state.element.is_free:
                 return state.move_towards(radar, state.element.pos)
-        return None
+        # Rien à faire : on l'arrête, sinon il continuerait sur sa lancée
+        return state.stop(radar)
 
     def play_destructor(self, state, destructor):
         # TODO : tirer sur un ennemi (state.targets_in_range, state.shoot_at),

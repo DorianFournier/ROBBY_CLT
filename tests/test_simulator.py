@@ -100,3 +100,19 @@ def test_bot4_is_deterministic_and_fast():
     a = play(make_free_state(robots))
     assert time.perf_counter() - started < 1.0          # délai serveur : 3 s
     assert a == play(make_free_state(robots))
+
+
+def test_simulated_robots_keep_moving_and_stop_when_blocked():
+    from robby.simulator import TurnSimulator
+    state = make_free_state([robot(13, 1, "K", 2000, 5000, heading=90, speed=2000),
+                             robot(23, 2, "K", 9000, 5000, heading=270, speed=1000),
+                             robot(11, 1, "R", 2000, 9000, heading=90, speed=1000)])
+    res = TurnSimulator(state).run({1: [shoot(13, angle=0)]})     # tire en roulant
+    assert res.robot(13).pos == pytest.approx((4000, 5000))
+    assert res.robot(23).pos == pytest.approx((8000, 5000))       # ennemi sur sa lancée
+    res = TurnSimulator(state).run({1: [move(11, angle=0, speed=0)]})
+    assert res.robot(11).pos == (2000, 9000) and res.robot(11).speed == 0
+    blocked = make_free_state([robot(13, 1, "K", 2000, 5000, heading=90, speed=5000),
+                               robot(21, 2, "R", 4000, 5000)])
+    res = TurnSimulator(blocked).run({})
+    assert res.robot(13).speed == 0 and res.robot(13).x < 4000 - 600 + 1
