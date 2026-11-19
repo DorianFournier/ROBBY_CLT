@@ -1,43 +1,34 @@
 # robby/constants.py
 # Constantes du jeu côté client.
-# Les valeurs numériques (taille de carte, portées...) sont envoyées par le
+# Les valeurs numériques (taille de l'arène, portées...) sont envoyées par le
 # serveur au démarrage (message game_start) : celles-ci ne sont que des
 # valeurs par défaut.
 
-# Déplacements : direction -> (dx, dy). Y augmente vers le BAS.
-DIRECTIONS = {
-    "U": (0, -1),
-    "UR": (1, -1),
-    "R": (1, 0),
-    "DR": (1, 1),
-    "D": (0, 1),
-    "DL": (-1, 1),
-    "L": (-1, 0),
-    "UL": (-1, -1),
-}
-
-# Boucliers (Défenseur uniquement) : côté protégé
-SHIELD_DIRECTIONS = ["SU", "SR", "SD", "SL"]
-
 ROBOT_TYPES = {
-    "R": "Radar",       # détecte les ennemis, ramasse l'élément
+    "R": "Radar",       # détecte les ennemis, ramasse la batterie
     "D": "Défenseur",   # pose un bouclier
     "K": "Destructeur", # tire
 }
 
+SPAWN_STEP = 1000   # écart entre les positions de départ (bases au milieu des côtés)
+
 DEFAULT_CONFIG = {
-    "map_width": 15,
-    "map_height": 15,
-    "max_robots_per_cell": 2,
-    "radar_range": 3,
-    "destructor_range": 3,
+    "map_width": 15000,
+    "map_height": 15000,
+    "radar_range": 3000,
+    "destructor_range": 3000,
+    "move_speed": {"R": 1000, "D": 2000, "K": 5000},   # vitesse max par tour
+    "robot_radius": 300,
+    "shield_radius": 1500,
+    "shield_arc": 90,
+    "pickup_radius": 500,
+    "base_radius": 700,
     "phase1_turns": 100,
     "phase2_turns": 100,
     "respawn_delay": 5,
     "penalty_turns": 3,
     "kill_points": {"K": 250, "D": 500, "R": 750, "RE": 1000},
-    "move_speed": {"K": 3, "D": 2, "R": 1},  # cases par tour
-    "capture_points": 0,   # bonus pour avoir ramené l'élément
+    "capture_points": 0,   # bonus pour avoir ramené la batterie
     "survivor_points": 0,  # bonus par robot en vie en fin de partie
     "shield_hp": 3,             # résistance d'un bouclier (tirs arrêtés)
     "shield_break_turns": 4,    # tours sans bouclier quand il est brisé

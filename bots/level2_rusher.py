@@ -1,102 +1,78 @@
 # bots/level2_rusher.py
-# NIVEAU 2 — « fonceur » : aucune prudence, aucune mémoire.
-#   - Radar : va droit sur l'élément, puis le ramène à la base.
-#   - Destructeur : tire sur l'ennemi visible le plus proche, sinon lui fonce
-#     dessus ; s'il ne voit personne, il reste près de son Radar.
-#   - Défenseur : suit le Radar et tourne son bouclier vers l'ennemi le plus
-#     proche.
-#   - Zone (phase 2) : tout robot hors de la zone sûre y rentre en priorité.
+# NIVEAU 2 : « fonceur », aucune prudence, aucune mémoire.
+#   - Radar : va droit sur la batterie puis la ramène ; en phase 2, suit son K.
+#   - Destructeur : tire sur l'ennemi le plus proche qu'il peut toucher, sinon
+#     fonce vers l'ennemi visible le plus proche ; sinon reste près du Radar.
+#   - Défenseur : tourne son bouclier vers l'ennemi le plus proche, sinon
+#     suit le Radar.
+#   - Zone (phase 2) : tout robot en danger rentre dans la zone sûre d'abord.
 
-from robby import GameState, move, shield, shoot
-from robby.game_state import Robot
+from robby import GameState, shield
+from robby.geometry import angle_diff
 from robby.strategy import Strategy
-
-
-def shield_towards(defender: Robot, target_pos) -> str:
-    """Côté du bouclier qui fait face à une position (axe dominant)."""
-    dx, dy = target_pos[0] - defender.x, target_pos[1] - defender.y
-    if abs(dx) >= abs(dy):
-        return "SR" if dx > 0 else "SL"
-    return "SD" if dy > 0 else "SU"
 
 
 class RusherBot(Strategy):
 
     def decide(self, state: GameState) -> list[dict]:
         commands = []
-        taken = set()  # cases d'arrivée déjà visées par nos robots
-        # Les robots en danger dans la zone choisissent leur case en premier
-        robots = sorted(state.my_robots, key=lambda r: state.in_zone(r.pos, 2))
-        for robot in robots:
+        for robot in state.my_robots:
             if not robot.can_act:
-                taken.add(robot.pos)
                 continue
-            # Zone (phase 2) : rentrer dans la zone sûre avant tout
-            escape = state.zone_escape_path(robot, lookahead=2, taken=taken)
+            escape = state.zone_escape(robot)
             if escape:
-                command = move(robot, *escape)
+                command = state.move_towards(robot, escape)
             elif robot.type == "R":
                 command = self.radar(state, robot)
             elif robot.type == "K":
                 command = self.destructor(state, robot)
             else:
                 command = self.defender(state, robot)
-            # Deux robots qui visent la même case ne bougent pas : on évite
-            if command and command["action"] == "MOVE":
-                path = state.trim_to_free(robot, command["path"], taken)
-                command = move(robot, *path) if path else None
-            if command and command["action"] == "MOVE":
-                taken.add(state.destination(robot, command["path"]))
-            else:
-                taken.add(robot.pos)
+            command = state.keep_safe(robot, command)   # tir en roulant : prudence
             if command:
                 commands.append(command)
         return commands
 
     def radar(self, state, radar):
-        if state.phase != 1:
-            return None
-        if radar.carrying_element:
-            target = state.my_base
-        elif state.element.is_free:
-            target = state.element.pos
-        else:
-            return None
-        path = state.path_towards(radar, target)
-        return move(radar, *path) if path else None
+        if state.phase == 1:
+            if radar.carrying_element:
+                return state.move_towards(radar, state.my_base)
+            if state.element.is_free:
+                return state.move_towards(radar, state.element.pos)
+        killers = state.my_robots_of_type("K")
+        if killers:
+            target = state.clamp_to_zone(killers[0].pos, 2)
+            return state.move_towards(radar, target, stop_at=1200)
+        return state.move_towards(radar, state.clamp_to_zone(state.safe_center, 2))
 
     def destructor(self, state, k):
         targets = state.targets_in_range(k)
         if targets:
-            return shoot(k, state.nearest(k, targets))
+            return state.shoot_at(k, state.nearest(k, targets))
         # Ennemi à portée mais derrière un bouclier : tirer quand même l'use,
         # et il se brise au bout de quelques tirs (anti-blocage)
         shielded = state.shielded_targets(k)
         if shielded:
-            return shoot(k, state.nearest(k, shielded))
+            return state.shoot_at(k, state.nearest(k, shielded))
         enemy = state.nearest(k, state.enemies)
         if enemy:
-            target = enemy.pos
-        else:
-            # Sans ennemi visible : rester près du Radar, sinon on ne voit rien
-            radars = state.my_robots_of_type("R")
-            if radars and k.distance_to(radars[0]) > 2:
-                target = radars[0].pos
-            elif radars:
-                return None
-            else:
-                target = state.safe_cell
-        path = state.path_towards(k, state.clamp_to_zone(target, 2))
-        return move(k, *path) if path else None
+            return state.move_towards(k, state.clamp_to_zone(enemy.pos, 2),
+                                      stop_at=2200)
+        radars = state.my_robots_of_type("R")
+        if radars:
+            return state.move_towards(k, state.clamp_to_zone(radars[0].pos, 2),
+                                      stop_at=1000)
+        return state.move_towards(k, state.safe_center, stop_at=1000)
 
     def defender(self, state, d):
         enemy = state.nearest(d, state.enemies)
         if enemy and d.shield_ready:          # bouclier brisé : indisponible
-            wanted = shield_towards(d, enemy.pos)
-            if wanted != d.shield_direction:
-                return shield(d, wanted)
+            wanted = d.angle_to(enemy)
+            if wanted is not None and (d.shield_direction is None
+                                       or angle_diff(wanted, d.shield_direction) > 20):
+                return shield(d, angle=wanted)
         radars = state.my_robots_of_type("R")
-        if radars and d.distance_to(radars[0]) > 1:
-            path = state.path_towards(d, radars[0].pos)
-            return move(d, *path) if path else None
+        if radars:
+            return state.move_towards(d, state.clamp_to_zone(radars[0].pos, 2),
+                                      stop_at=700)
         return None

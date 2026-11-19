@@ -1,7 +1,7 @@
 # robby/geometry.py
-# Géométrie du MODE LIBRE (mêmes calculs que le serveur).
+# Géométrie du jeu (mêmes calculs que le serveur).
 #
-# Repère : x vers la droite, y vers le BAS (comme l'écran et la V1).
+# Repère : x vers la droite, y vers le BAS (comme l'écran).
 # Angles en degrés, sens horaire, 0 = haut : un angle a donne la direction
 #   (dx, dy) = (sin a, -cos a)
 #   0 -> (0, -1) haut   90 -> (1, 0) droite   180 -> (0, 1) bas   270 -> (-1, 0)

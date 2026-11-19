@@ -2,26 +2,45 @@
 # =====================================================================
 # C'EST ICI QUE VOUS DÉVELOPPEZ VOTRE STRATÉGIE.
 #
-# `decide(state)` est appelée à chaque tour et retourne une liste de
-# commandes (au plus UNE par robot) construites avec :
-#   move(robot, "U", "UR", ...)   une direction par case parcourue
-#       (U, UR, R, DR, D, DL, L, UL) ; vitesse max : K 3, D 2, R 1 case(s)
-#   shoot(destructeur, cible)
-#   shield(defenseur, "SU" | "SR" | "SD" | "SL")
+# `decide(state)` est appelée à chaque tour et retourne la liste des
+# commandes. Les robots partent dans une direction (un ANGLE en degrés) à
+# une VITESSE donnée.
+#   Angles : 0 = haut, 90 = droite, 180 = bas, 270 = gauche (boussole)
+#   Arène  : 15000 x 15000 unités, y vers le BAS
+#
+# Commandes (au plus UNE par robot et par tour) :
+#   move(robot, angle=90, speed=2000)   règle le CAP et la VITESSE du robot
+#                                       (max par tour : R 1000, D 2000, K 5000)
+#   stop(robot)                         vitesse 0
+#   shoot(destructeur, angle=45)        rayon de 3000 : touche le 1er ennemi
+#   shield(defenseur, angle=180)        bouclier de 90° tourné vers l'angle
+#
+# ATTENTION : un robot GARDE son cap et sa vitesse d'un tour à l'autre. Sans
+# nouvelle commande (ou s'il tire, s'il pose son bouclier), il continue
+# d'avancer tout seul ! Il ne s'arrête que si vous le lui demandez (stop),
+# s'il heurte un ennemi ou un bouclier ennemi, ou s'il est pénalisé.
+# robot.heading et robot.speed : son cap et sa vitesse actuels.
 #
 # Outils utiles de `state` (voir robby/game_state.py et le README) :
-#   state.my_robots, state.enemies, state.element, state.my_base,
-#   state.phase, state.turn, state.path_towards(robot, (x, y)),
-#   state.targets_in_range(robot), state.nearest(robot, liste) ...
+#   state.move_towards(robot, point)    commande toute prête pour y aller
+#                                       (et pour s'arrêter une fois arrivé)
+#   state.predict(robot, tours)         où il sera s'il garde son cap
+#   state.keep_safe(robot, commande)    tirer en roulant, sauf vers la tempête
+#   state.targets_in_range(k)           ennemis qu'un tir toucherait
+#   state.shoot_at(k, cible)            commande de tir visée sur la cible
+#   state.aim(k, cible), state.distance(a, b), robot.angle_to(cible)
+#   state.zone_escape(robot)            point sûr si la zone menace le robot
+#   state.firing_spot(k, cible)         où aller pour contourner un bouclier
 #
-# Paliers : battre bot1, puis bot2, puis bot3 (dossier bots/) :
+# Lancement :
 #   uv run main.py --name Moi                      (votre stratégie)
 #   uv run main.py --name Adversaire --strategy bot1
+# Paliers : battre bot1, puis bot2, puis bot3, puis bot4
 #
 # Ce squelette ne fait bouger que le Radar. À vous de jouer pour le reste !
 # =====================================================================
 
-from robby import GameState, move
+from robby import GameState
 from robby.strategy import Strategy
 
 
@@ -47,23 +66,20 @@ class MyStrategy(Strategy):
         return commands
 
     def play_radar(self, state, radar):
-        # Phase 1 : aller chercher l'élément puis le ramener à la base
+        # Phase 1 : aller chercher la batterie puis la ramener à la base
         if state.phase == 1:
             if radar.carrying_element:
-                target = state.my_base
-            elif state.element.is_free:
-                target = state.element.pos
-            else:
-                return None
-            path = state.path_towards(radar, target)
-            return move(radar, *path) if path else None
-        return None
+                return state.move_towards(radar, state.my_base)
+            if state.element.is_free:
+                return state.move_towards(radar, state.element.pos)
+        # Rien à faire : on l'arrête, sinon il continuerait sur sa lancée
+        return state.stop(radar)
 
     def play_destructor(self, state, destructor):
-        # TODO : tirer sur un ennemi à portée (state.targets_in_range),
+        # TODO : tirer sur un ennemi (state.targets_in_range, state.shoot_at),
         #        sinon se déplacer... mais où ?
         return None
 
     def play_defender(self, state, defender):
-        # TODO : protéger quelqu'un avec le bouclier ?
+        # TODO : tourner le bouclier vers la menace (shield(d, angle=...)) ?
         return None
