@@ -177,7 +177,26 @@ class GameState:
 
     @property
     def storm_center(self):
+        """Centre du cercle sûr à la fin de ce tour."""
         return tuple(self.zone["center"])
+
+    def storm_center_at(self, lookahead: int = 0):
+        """Centre du cercle sûr dans `lookahead` tours. Avec l'option de
+        tempête aléatoire du serveur, le centre glisse pendant les avancées."""
+        centers = self.zone.get("forecast_centers") or [self.zone["center"]]
+        return tuple(centers[min(max(lookahead, 0), len(centers) - 1)])
+
+    @property
+    def safe_center(self):
+        """Centre du prochain cercle annoncé (sinon du cercle actuel) : le
+        meilleur endroit où se regrouper avant que la tempête n'avance."""
+        return tuple(self.zone.get("target_center") or self.zone["center"])
+
+    @property
+    def safe_cell(self) -> Position:
+        """Case de safe_center (mode grille)."""
+        cx, cy = self.safe_center
+        return (round(cx), round(cy))
 
     def storm_radius(self, lookahead: int = 0) -> float:
         """Rayon sûr à la fin de ce tour (0), du suivant (1), etc."""
@@ -187,7 +206,7 @@ class GameState:
     def in_zone(self, pos: Position, lookahead: int = 0) -> bool:
         """True si la case est (ou sera dans `lookahead` tours) dans le cercle
         sûr : distance (à vol d'oiseau) au centre <= rayon."""
-        cx, cy = self.storm_center
+        cx, cy = self.storm_center_at(lookahead)
         dist = ((pos[0] - cx) ** 2 + (pos[1] - cy) ** 2) ** 0.5
         return dist <= self.storm_radius(lookahead) + 1e-9
 
@@ -195,7 +214,7 @@ class GameState:
         """Case la plus proche de `pos` dans le cercle sûr (pos si elle y est)."""
         if self.in_zone(pos, lookahead):
             return pos
-        cx, cy = self.storm_center
+        cx, cy = self.storm_center_at(lookahead)
         inside = [(x, y) for x in range(self.map_width) for y in range(self.map_height)
                   if self.in_zone((x, y), lookahead)]
         if not inside:

@@ -77,15 +77,15 @@ class FreeTacticianBot(Strategy):
             teams = [int(t) for t in (state.config.get("teams") or {})]
             bases = [state.base_of(t) for t in teams if t != state.team_id]
             bases = [b for b in bases if b]
-            target = min(bases, key=lambda b: state.distance(state.center, b)) \
-                if bases else state.center
+            target = min(bases, key=lambda b: state.distance(state.safe_center, b)) \
+                if bases else state.safe_center
         return state.clamp_to_zone(target, 3, inset=1500)
 
     def home(self, state):
         """Point de ralliement : la batterie (phase 1) ou le centre de la zone."""
         if state.phase == 1 and state.element.is_free:
             return state.element.pos
-        return state.clamp_to_zone(state.center, 3)
+        return state.clamp_to_zone(state.safe_center, 3)
 
     # ------------------------------------------------------------------
 

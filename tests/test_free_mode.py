@@ -149,3 +149,18 @@ def test_bot_shortcuts_play_both_modes():
     state = make_free_state([robot(11, 1, "R", 1500, 7500)])
     cmd = bot.decide(state)[0]
     assert cmd["angle"] == pytest.approx(90)        # vers la batterie
+
+
+def test_moving_storm_center_is_followed_by_the_tools():
+    zone = {"center": [7500, 7500], "radius": 6000,
+            "forecast": [6000, 5500, 5000], "state": "shrink", "target": 3500,
+            "target_center": [9500, 8000],
+            "forecast_centers": [[7500, 7500], [7900, 7600], [8300, 7700]],
+            "shrink_turn": 30, "end_turn": 36}
+    state = make_free_state([robot(11, 1, "R", 2000, 7500)], phase=2, zone=zone)
+    assert state.storm_center_at(2) == (8300, 7700)
+    assert state.safe_center == (9500, 8000)
+    assert state.in_zone((2000, 7500))                    # 5500 du centre actuel
+    assert not state.in_zone((2000, 7500), lookahead=2)   # le cercle s'éloigne
+    escape = state.zone_escape(state.get_robot(11))
+    assert escape is not None and escape[0] > 2000

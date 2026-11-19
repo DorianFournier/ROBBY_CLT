@@ -43,7 +43,7 @@ class FreeRusherBot(Strategy):
         if killers:
             target = state.clamp_to_zone(killers[0].pos, 2)
             return state.move_towards(radar, target, stop_at=1200)
-        return state.move_towards(radar, state.clamp_to_zone(state.center, 2))
+        return state.move_towards(radar, state.clamp_to_zone(state.safe_center, 2))
 
     def destructor(self, state, k):
         targets = state.targets_in_range(k)
@@ -57,7 +57,7 @@ class FreeRusherBot(Strategy):
         if radars:
             return state.move_towards(k, state.clamp_to_zone(radars[0].pos, 2),
                                       stop_at=1000)
-        return state.move_towards(k, state.center, stop_at=1000)
+        return state.move_towards(k, state.safe_center, stop_at=1000)
 
     def defender(self, state, d):
         enemy = state.nearest(d, state.enemies)
