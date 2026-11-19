@@ -22,10 +22,14 @@ class FreeRandomBot(Strategy):
                     commands.append(command)
                 continue
             targets = state.targets_in_range(robot) if robot.type == "K" else []
+            # tirer ou tourner le bouclier n'arrête pas le robot : on vérifie
+            # qu'il ne finira pas dans la tempête sur sa lancée (keep_safe)
             if targets and random.random() < 0.7:
-                commands.append(state.shoot_at(robot, random.choice(targets)))
+                commands.append(state.keep_safe(
+                    robot, state.shoot_at(robot, random.choice(targets))))
             elif robot.type == "D" and random.random() < 0.3:
-                commands.append(shield(robot, angle=random.uniform(0, 360)))
+                commands.append(state.keep_safe(
+                    robot, shield(robot, angle=random.uniform(0, 360))))
             else:
                 command = self.random_move(state, robot)
                 if command:

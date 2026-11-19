@@ -29,6 +29,7 @@ class FreeRusherBot(Strategy):
                 command = self.destructor(state, robot)
             else:
                 command = self.defender(state, robot)
+            command = state.keep_safe(robot, command)   # tir en roulant : prudence
             if command:
                 commands.append(command)
         return commands

@@ -44,7 +44,21 @@ def _pos(thing) -> Point:
 
 
 class FreeRobot(Robot):
-    """Robot du mode libre : `shield_direction` est un angle (ou None)."""
+    """
+    Robot du mode libre : `shield_direction` est un angle (ou None).
+    `heading` et `speed` : cap et vitesse actuels. Le robot les GARDE d'un
+    tour à l'autre (il continue d'avancer tout seul) jusqu'à une nouvelle
+    commande MOVE, un blocage ou une pénalité (vitesse remise à 0).
+    """
+
+    def __init__(self, data: dict):
+        super().__init__(data)
+        self.heading: float | None = data.get("heading")
+        self.speed: float = data.get("speed") or 0
+
+    @property
+    def moving(self) -> bool:
+        return self.speed > 0 and self.heading is not None
 
     def distance_to(self, other) -> float:
         return distance(self.pos, _pos(other))
@@ -60,6 +74,9 @@ class FreeGameState(GameState):
     phase, turn, zone...), plus les outils du mode libre :
 
         state.move_towards(robot, point)     commande pour aller vers un point
+        state.stop(robot)                    commande d'arrêt (vitesse 0)
+        state.predict(robot, turns)          position future s'il garde son cap
+        state.keep_safe(robot, commande)     tirer en roulant... sauf vers la tempête
         state.move_away(robot, point)        commande pour s'en éloigner
         state.aim(k, cible)                  angle de tir vers une cible
         state.targets_in_range(k)            ennemis qu'un tir toucherait
@@ -139,17 +156,50 @@ class FreeGameState(GameState):
         """
         Commande MOVE vers `target` (robot ou point), en s'arrêtant à
         `stop_at` unités de la cible. Vitesse : max du robot, ou `speed`,
-        réduite pour ne pas dépasser le point visé. None si déjà sur place.
+        réduite pour ne pas dépasser le point visé CE tour-ci.
+        Arrivé : commande d'arrêt si le robot roule encore (sinon il
+        continuerait sur sa lancée), None s'il est déjà arrêté.
             commands.append(state.move_towards(k, ennemi, stop_at=2000))
+        Rappel : le robot garde ce cap et cette vitesse aux tours suivants.
+        Appelez move_towards à chaque tour pour corriger sa trajectoire.
         """
         goal = _pos(target)
         heading = angle_to(robot.pos, goal)
         gap = distance(robot.pos, goal) - stop_at
         if heading is None or gap <= 1:
-            return None
+            return self.stop(robot)
         limit = self.max_speed(robot) if speed is None else min(speed,
                                                                  self.max_speed(robot))
         return move(robot, angle=heading, speed=min(limit, gap))
+
+    def stop(self, robot):
+        """Commande d'arrêt (vitesse 0), ou None si le robot est déjà arrêté."""
+        if getattr(robot, "speed", 0) > 0:
+            return move(robot, angle=robot.heading or 0, speed=0)
+        return None
+
+    def predict(self, robot, turns: int = 1) -> Point:
+        """Où sera `robot` dans `turns` tours s'il garde son cap et sa vitesse
+        (sans obstacle) : utile pour viser un ennemi en mouvement... au tour
+        suivant (un tir part de la position du DÉBUT de tour)."""
+        if not getattr(robot, "speed", 0) or robot.heading is None:
+            return robot.pos
+        return self.destination(robot, robot.heading, robot.speed * turns)
+
+    def safe_to_coast(self, robot, turns: int = 1) -> bool:
+        """En continuant sur sa lancée (sans commande MOVE, par exemple s'il
+        tire), le robot reste-t-il dans le cercle sûr pendant `turns` tours ?"""
+        return all(self.in_zone(self.predict(robot, k), k, inset=self.robot_radius)
+                   for k in range(1, turns + 1))
+
+    def keep_safe(self, robot, command):
+        """Garde `command` (tir, bouclier...) si le robot peut continuer sur sa
+        lancée sans finir dans la tempête ; sinon commande pour s'en écarter."""
+        if command is None or command.get("action") == "MOVE" \
+                or self.safe_to_coast(robot):
+            return command
+        return (self.move_towards(robot, self.clamp_to_zone(robot.pos, 2))
+                or self.stop(robot) or command)
 
     def move_away(self, robot, threat, speed=None):
         """Commande MOVE pour s'éloigner de `threat` (robot ou point)."""

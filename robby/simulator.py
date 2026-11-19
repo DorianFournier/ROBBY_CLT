@@ -11,8 +11,11 @@
 #
 # Ordre de résolution (comme le serveur) :
 #   1. tirs, sur les positions du DÉBUT de tour ; morts
-#   2. déplacements des survivants, en petits pas simultanés : un robot
-#      s'arrête avant de toucher un ennemi ou d'entrer dans un bouclier ennemi
+#   2. déplacements de TOUS les robots qui roulent (cap et vitesse gardés d'un
+#      tour à l'autre ; MOVE les change), en petits pas simultanés : un robot
+#      s'arrête net avant de toucher un ennemi ou d'entrer dans un bouclier
+#      ennemi. Sans commande, un ennemi visible continue donc sur sa lancée :
+#      c'est la prévision la plus simple de ce qu'il va faire.
 #   3. batterie (ramassage, capture), boucliers, zone
 #
 # Limites : les ennemis invisibles n'existent pas pour le simulateur (sauf si
@@ -45,6 +48,8 @@ class SimRobot:
     carrying_element: bool = False
     penalty: int = 0
     ghost: bool = False          # ennemi supposé (mémoire), pas vu ce tour
+    heading: float | None = None   # cap gardé d'un tour à l'autre
+    speed: float = 0               # vitesse gardée d'un tour à l'autre
 
     @property
     def pos(self):
@@ -86,7 +91,9 @@ class TurnSimulator:
         self.speed = c["move_speed"]
         self.width, self.height = state.map_width, state.map_height
         self.robots = [SimRobot(r.id, r.team_id, r.type, r.x, r.y, r.alive,
-                                r.shield_direction, r.carrying_element, r.penalty)
+                                r.shield_direction, r.carrying_element, r.penalty,
+                                heading=getattr(r, "heading", None),
+                                speed=getattr(r, "speed", 0) or 0)
                        for r in state.robots]
         self.robots += list(extra)
 
@@ -122,13 +129,15 @@ class TurnSimulator:
     def run(self, commands_by_team: dict) -> SimResult:
         robots = self._copy()
         st = self.state
-        moves, shots, shields = {}, [], {}
+        shots, shields = [], {}
         for team_id, commands in commands_by_team.items():
             seen = set()
             for cmd in commands or []:
                 r = robots.get(cmd.get("robot_id"))
-                if (r is None or r.team_id != team_id or not r.alive or r.penalty
-                        or r.id in seen or not is_number(cmd.get("angle"))):
+                if r is None or r.team_id != team_id or not r.alive or r.penalty:
+                    continue
+                if r.id in seen or not is_number(cmd.get("angle")):
+                    r.penalty = 1                  # faute : pénalité (moteurs coupés)
                     continue
                 seen.add(r.id)
                 angle = cmd["angle"] % 360
@@ -136,12 +145,15 @@ class TurnSimulator:
                 if action == "MOVE":
                     speed = cmd.get("speed")
                     if is_number(speed) and 0 <= speed <= self.speed.get(r.type, 0):
-                        dx, dy = direction(angle)
-                        moves[r.id] = (dx * speed / SUBSTEPS, dy * speed / SUBSTEPS)
+                        r.heading, r.speed = angle, speed   # gardés aux tours suivants
+                    else:
+                        r.penalty = 1
                 elif action == "SHOOT" and r.type == "K":
                     shots.append((r, angle))
                 elif action == "SHIELD" and r.type == "D":
                     shields[r.id] = angle
+                else:
+                    r.penalty = 1
 
         result = SimResult(robots=robots)
 
@@ -160,8 +172,17 @@ class TurnSimulator:
             if r.carrying_element:
                 r.carrying_element, carrier, battery = False, None, r.pos
 
-        # 2. déplacements simultanés des survivants
-        movers = [rid for rid in moves if robots[rid].alive]
+        # 2. déplacements simultanés : TOUS les robots qui roulent (cap et
+        #    vitesse gardés), sauf les pénalisés, dont les moteurs sont coupés
+        for r in robots.values():
+            if not r.alive or r.penalty:
+                r.speed = 0
+        moves = {}
+        for r in robots.values():
+            if r.speed > 0 and r.heading is not None:
+                dx, dy = direction(r.heading)
+                moves[r.id] = (dx * r.speed / SUBSTEPS, dy * r.speed / SUBSTEPS)
+        movers = list(moves)
         alive = [r for r in robots.values() if r.alive]
         start = {r.id: r.pos for r in alive}
         pos = dict(start)
@@ -213,6 +234,8 @@ class TurnSimulator:
                         first_touch[rid] = step
         for rid, p in pos.items():
             robots[rid].x, robots[rid].y = p
+        for rid in stopped:
+            robots[rid].speed = 0          # bloqué : s'arrête net
 
         # 3. batterie : ramassage (le premier arrivé), capture à la base
         if st.phase == 1 and carrier is None and first_touch:

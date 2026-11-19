@@ -5,7 +5,8 @@
 # garde le meilleur. À chaque tour :
 #
 #   1. Plan de départ : celui du tacticien (bot3).
-#   2. Pour chaque robot, une liste de commandes candidates (rester, aller
+#   2. Pour chaque robot, une liste de commandes candidates (continuer sur
+#      sa lancée, s'arrêter, aller
 #      vers la batterie, tirer sur chaque cible, contourner un bouclier,
 #      8 directions, tourner le bouclier vers chaque menace...).
 #   3. Chaque plan est JOUÉ dans le simulateur de tour (robby/simulator.py,
@@ -40,6 +41,7 @@ DANGER = 0.55        # part de la valeur d'un robot qu'un K ennemi menace
 OPPORTUNITY = 0.35   # part de la valeur d'un ennemi que notre K menace
 ZONE_SOON = 0.5      # hors de la zone du tour prochain
 ZONE_LATER = 0.1     # hors de la zone dans 2 tours
+COAST = 0.2          # sur sa lancée, finirait hors de la zone au tour suivant
 
 
 class FreeSimulatorBot(Strategy):
@@ -193,7 +195,8 @@ class FreeSimulatorBot(Strategy):
 
     def candidates(self, robot, base):
         st = self.state
-        cands = [None, base]
+        # None : aucune commande, le robot continue sur sa lancée
+        cands = [None, base, st.stop(robot)]
         for k in range(8):       # 8 directions
             cands.append(move(robot, angle=45 * k, speed=st.max_speed(robot)))
             if robot.type != "R":
@@ -316,12 +319,17 @@ class FreeSimulatorBot(Strategy):
                                                     if hit.carrying_element else 0)
                     value += OPPORTUNITY * gain
 
-        # --- 4. zone qui rétrécit
+        # --- 4. zone qui rétrécit (et l'élan : sans nouvelle commande, le
+        #        robot continue sur sa lancée au tour suivant)
         for r in mine:
             if not st.in_zone(r.pos, 1, inset=st.robot_radius):
                 value -= ZONE_SOON * OWN_VALUE[r.type]
             elif not st.in_zone(r.pos, 2, inset=st.robot_radius):
                 value -= ZONE_LATER * OWN_VALUE[r.type]
+            if r.speed > 0 and r.heading is not None:
+                coast = st.destination(r, r.heading, r.speed)
+                if not st.in_zone(coast, 1, inset=st.robot_radius):
+                    value -= COAST * OWN_VALUE[r.type]
 
         # --- 5. cohésion : sans Radar proche, un K est aveugle
         radar = next((r for r in mine if r.type == "R"), None)

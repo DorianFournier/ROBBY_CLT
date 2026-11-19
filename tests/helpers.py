@@ -1,9 +1,11 @@
 from robby import FreeGameState, GameState
 
 
-def robot(id, team, type, x, y, alive=True, shield=None, carrying=False, penalty=0):
+def robot(id, team, type, x, y, alive=True, shield=None, carrying=False, penalty=0,
+          heading=None, speed=0):
     return {"id": id, "team": team, "type": type, "x": x, "y": y, "alive": alive,
-            "shield": shield, "carrying_element": carrying, "penalty": penalty}
+            "shield": shield, "carrying_element": carrying, "penalty": penalty,
+            "heading": heading, "speed": speed}
 
 
 def make_state(robots, team_id=1, phase=1, element=(7, 7), carried_by=None):
