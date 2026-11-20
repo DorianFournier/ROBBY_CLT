@@ -99,6 +99,7 @@ class Element:
         self.y: float = data["y"]
         self.carried_by_id: int | None = data["carried_by_id"]
         self.present: bool = data.get("present", True)
+        self.points: int = data.get("points", 0)   # ce que rapporte sa capture
 
     @property
     def pos(self) -> Point:
@@ -126,6 +127,7 @@ class GameState:
         state.scores, state.my_score         scores de toutes les équipes, le vôtre
         state.lead                           avance sur le meilleur adversaire
         state.nearest_battery(robot)         batterie libre la plus proche (ou None)
+        state.best_battery(robot)            batterie libre la plus rentable
         state.free_batteries                 batteries posées au sol, à prendre
         state.move_towards(robot, point)     commande pour aller vers un point
         state.stop(robot)                    commande d'arrêt (vitesse 0)
@@ -212,6 +214,18 @@ class GameState:
     def nearest_battery(self, origin) -> Element | None:
         """Batterie libre la plus proche de `origin` (robot ou point), ou None."""
         return self.nearest(origin, self.free_batteries)
+
+    def best_battery(self, robot) -> Element | None:
+        """Batterie libre la plus RENTABLE pour ce Radar : ses points divisés
+        par le trajet (aller la chercher, puis la ramener à votre base).
+        La grosse batterie du centre rapporte plus, mais tout le monde y va."""
+        base = self.my_base
+
+        def rentabilite(e):
+            trajet = distance(robot.pos, e.pos) + distance(e.pos, base)
+            return (e.points or 1) / (trajet + 1000)
+
+        return max(self.free_batteries, key=rentabilite, default=None)
 
     def carried_battery(self, robot) -> Element | None:
         """Batterie portée par `robot` (ou None)."""

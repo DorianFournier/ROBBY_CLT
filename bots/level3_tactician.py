@@ -110,7 +110,7 @@ class TacticianBot(Strategy):
                 hide = state.clamp_to_zone((d.x + dx * 700, d.y + dy * 700), 2)
                 return state.move_towards(radar, hide)
             return state.move_away(radar, danger)
-        battery = state.nearest_battery(radar) if state.phase == 1 else None
+        battery = state.best_battery(radar) if state.phase == 1 else None
         if battery:
             return state.move_towards(radar, battery.pos)
         if state.phase == 2:   # le Radar mène la chasse, les autres l'escortent
