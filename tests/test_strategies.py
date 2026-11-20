@@ -28,19 +28,19 @@ def test_load_strategy_shortcuts():
     assert isinstance(load_strategy("strategy.my_strategy:MyStrategy"), MyStrategy)
 
 
-def test_example_radar_brings_battery_home():
-    state = make_state([robot(11, 1, "R", 1500, 7500, carrying=True)],
-                       carried_by=11, element=(1500, 7500))
+def test_example_collector_brings_battery_home():
+    state = make_state([robot(14, 1, "C", 1500, 7500, carrying=True)],
+                       carried_by=14, element=(1500, 7500))
     [cmd] = MyStrategy().decide(state)
     assert cmd["action"] == "MOVE" and cmd["angle"] == pytest.approx(270)
     assert cmd["speed"] == pytest.approx(1000)         # base à 1000 : pile dessus
 
 
-def test_example_radar_stops_when_nothing_to_do():
-    state = make_state([robot(11, 1, "R", 6000, 6000, heading=90, speed=800)],
+def test_example_collector_stops_when_nothing_to_do():
+    state = make_state([robot(14, 1, "C", 6000, 6000, heading=90, speed=800)],
                        phase=2)
     assert MyStrategy().decide(state) == [
-        {"robot_id": 11, "action": "MOVE", "angle": 90.0, "speed": 0.0}]
+        {"robot_id": 14, "action": "MOVE", "angle": 90.0, "speed": 0.0}]
 
 
 def test_penalised_robot_gets_no_command():

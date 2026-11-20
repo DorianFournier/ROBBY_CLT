@@ -1,5 +1,5 @@
 # robby/simulator.py
-# MODE LIBRE : simulateur d'UN tour, côté client.
+# Simulateur d'UN tour, côté client.
 #
 # Il refait les calculs du serveur (mêmes règles, même ordre) sur ce que
 # votre équipe voit. Il sert à TESTER des commandes avant de les envoyer :
@@ -291,7 +291,7 @@ class TurnSimulator:
                 stopped |= refused
             pos.update(proposed)
             for rid in proposed:
-                if robots[rid].type != "R" or robots[rid].carrying_element:
+                if robots[rid].type != "C" or robots[rid].carrying_element:
                     continue
                 # positions arrondies au dixième, comme le trajet du serveur
                 arrondi = (round(pos[rid][0], 1), round(pos[rid][1], 1))
@@ -305,13 +305,13 @@ class TurnSimulator:
         for rid in stopped:
             robots[rid].speed = 0          # bloqué : s'arrête net
 
-        # 3. batteries : ramassage (pour chaque batterie, le premier Radar
-        #    arrivé ; un Radar n'en prend qu'une), puis capture à la base
-        for b in libres:            # Radar qui roule, déjà au contact : pas 0
+        # 3. batteries : ramassage (pour chaque batterie, le premier
+        #    Collecteur arrivé ; il n'en prend qu'une), puis capture à la base
+        for b in libres:            # Collecteur qui roule, déjà au contact : pas 0
             for rid in movers:
                 r = robots[rid]
                 d = distance(start[rid], b[1])
-                if r.type == "R" and r.alive and not r.carrying_element \
+                if r.type == "C" and r.alive and not r.carrying_element \
                         and d <= self.pickup:
                     touches[(rid, b[0])] = (0, d)
         # comme le serveur : le premier arrivé, puis le plus proche ; égalité

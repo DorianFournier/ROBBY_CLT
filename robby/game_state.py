@@ -41,7 +41,7 @@ class Robot:
     def __init__(self, data: dict):
         self.id: int = data["id"]
         self.team_id: int = data["team"]
-        self.type: str = data["type"]  # "R", "D" ou "K"
+        self.type: str = data["type"]  # "R", "C", "D" ou "K"
         self.x: float = data["x"]
         self.y: float = data["y"]
         self.alive: bool = data["alive"]
@@ -107,7 +107,7 @@ class Element:
 
     @property
     def is_free(self) -> bool:
-        """Posée au sol : un Radar peut la ramasser."""
+        """Posée au sol : un Collecteur peut la ramasser."""
         return self.present and self.carried_by_id is None
 
     def __repr__(self):
@@ -208,7 +208,7 @@ class GameState:
 
     @property
     def free_batteries(self) -> list[Element]:
-        """Batteries posées au sol, qu'un Radar peut ramasser."""
+        """Batteries posées au sol, qu'un Collecteur peut ramasser."""
         return [e for e in self.elements if e.is_free]
 
     def nearest_battery(self, origin) -> Element | None:
@@ -216,7 +216,7 @@ class GameState:
         return self.nearest(origin, self.free_batteries)
 
     def best_battery(self, robot) -> Element | None:
-        """Batterie libre la plus RENTABLE pour ce Radar : ses points divisés
+        """Batterie libre la plus RENTABLE pour ce Collecteur : ses points divisés
         par le trajet (aller la chercher, puis la ramener à votre base).
         La grosse batterie du centre rapporte plus, mais tout le monde y va."""
         base = self.my_base

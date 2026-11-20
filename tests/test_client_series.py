@@ -66,7 +66,8 @@ def test_client_plays_a_series_with_fresh_seeded_strategies():
     server.join(5)
     listener.close()
 
-    assert received[0]["placement"] == {"R": "avant", "D": "droite", "K": "gauche"}
+    assert received[0]["placement"] == {"R": "avant", "C": "milieu", "D": "droite",
+                                        "K": "gauche"}
     a, b = Recorder.instances
     assert a is not b                                # une instance par partie
     assert (a.team_id, b.team_id) == (1, 2)          # la place peut changer

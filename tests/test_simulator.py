@@ -42,11 +42,14 @@ def test_shots_first_enemy_and_shields():
 
 
 def test_battery_pickup_and_capture():
-    res = run([robot(11, 1, "R", 6800, 7500)], {1: [move(11, angle=90, speed=1000)]})
-    assert res.carrier == 11 and res.robot(11).carrying_element
-    res = run([robot(11, 1, "R", 1500, 7500, carrying=True)],
-              {1: [move(11, angle=270, speed=600)]}, carried_by=11)
+    res = run([robot(14, 1, "C", 6800, 7500)], {1: [move(14, angle=90, speed=1000)]})
+    assert res.carrier == 14 and res.robot(14).carrying_element
+    res = run([robot(14, 1, "C", 1500, 7500, carrying=True)],
+              {1: [move(14, angle=270, speed=600)]}, carried_by=14)
     assert res.captured_by == 1
+    # le Radar ne ramasse pas
+    res = run([robot(11, 1, "R", 6800, 7500)], {1: [move(11, angle=90, speed=1000)]})
+    assert res.carrier is None and not res.robot(11).carrying_element
 
 
 def test_zone_kills_and_invalid_commands_are_ignored():
@@ -75,11 +78,12 @@ def play(state, bot=None):
 
 
 def test_bot4_picks_up_the_battery():
-    commands = play(make_state([robot(11, 1, "R", 6600, 7500),
+    commands = play(make_state([robot(14, 1, "C", 6600, 7500),
+                                     robot(11, 1, "R", 6000, 7500),
                                      robot(12, 1, "D", 5000, 7000),
                                      robot(13, 1, "K", 5000, 8000)]))
-    assert commands[11]["action"] == "MOVE"
-    assert commands[11]["angle"] == pytest.approx(90, abs=30)
+    assert commands[14]["action"] == "MOVE"
+    assert commands[14]["angle"] == pytest.approx(90, abs=30)
 
 
 def test_bot4_shoots_an_exposed_enemy_radar():
