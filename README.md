@@ -225,8 +225,10 @@ ramasser : il ramasse... les ennemis !
   centre) d'un robot ennemi **à l'arrêt** (vitesse 0 : arrêté, bloqué ou
   pénalisé) l'**attrape**. Un robot qui roule ne peut pas être attrapé.
   Deux Collecteurs sur le même robot : le plus proche l'emporte. Un
-  Collecteur chargé ne peut pas être attrapé, et deux Collecteurs qui
-  s'attraperaient l'un l'autre ne prennent rien.
+  Collecteur chargé ne peut pas être attrapé. Deux Collecteurs qui
+  pourraient s'attraper l'un l'autre : celui qui **arrive au contact** (il a
+  roulé ce tour) prend celui qui est resté **garé** ; s'ils ont roulé tous
+  les deux, ou aucun, personne.
 - Un robot qui roule ne peut pas être attrapé... sauf si on lui **coupe la
   route** : bloqué par le Collecteur, il s'arrête net, au contact, et il est
   pris dans la foulée.
@@ -389,9 +391,11 @@ nul 0,5, défaite 0 :
 
 En phase 2, tous les bots envoient leur Collecteur à la chasse
 (`bots/chasse.py`) : il attrape les ennemis à l'arrêt ou leur coupe la route,
-et les porte à la déchèterie. Prudent tant que leurs Destructeurs se
-battent, il devient offensif quand il n'en reste plus (il patrouille, et le
-Radar le suit pour lui donner la vue).
+et les porte à la déchèterie (par le bord le plus proche). Sans proie en
+vue, il suit les pistes puis patrouille autour du centre : il ne reste
+jamais garé. Tant que leurs Destructeurs se battent, il leur laisse les
+proies couvertes par un Destructeur ennemi ; quand il n'en reste plus,
+il attaque tout, et le Radar le suit pour lui donner la vue.
 
 Lire leur code (`bots/level2_rusher.py`, `bots/level3_tactician.py`...) est une
 bonne source d'idées... mais pour les battre, il faudra faire mieux !

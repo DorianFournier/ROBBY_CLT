@@ -206,7 +206,7 @@ class TurnSimulator:
         if carrier is not None:
             carrier.captive_id = None
 
-    def _dump_and_grab(self, robots, result):
+    def _dump_and_grab(self, robots, result, moved=()):
         st = self.state
         for r in robots.values():
             if r.alive and r.captive and r.captured_by in robots:
@@ -242,7 +242,9 @@ class TurnSimulator:
         by_target = {}
         for cid, (d, tid, _) in choice.items():
             if tid in choice and choice[tid][1] == cid:
-                continue        # deux Collecteurs qui s'attrapent l'un l'autre
+                # prise mutuelle : seul celui qui est venu au contact prend
+                if not (cid in moved and tid not in moved):
+                    continue
             by_target.setdefault(tid, []).append((d, cid))
         for tid, takers in by_target.items():
             takers.sort(key=lambda x: x[0])
@@ -454,7 +456,9 @@ class TurnSimulator:
         # déchèterie (phase 2) : les prisonniers suivent leur Collecteur ;
         # dépôts, puis prises
         if st.phase == 2 and self.dump_enabled:
-            self._dump_and_grab(robots, result)
+            moved = {rid for rid, p in start.items()
+                     if distance(p, robots[rid].pos) > 0.05}
+            self._dump_and_grab(robots, result, moved)
 
         # boucliers
         for rid, angle in shields.items():
