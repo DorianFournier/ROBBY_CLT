@@ -280,8 +280,9 @@ client affiche pourquoi.
 | `state.my_robots`, `state.my_robots_of_type("K")` | vos robots vivants |
 | `state.enemies` | ennemis vivants **visibles** |
 | `state.scores`, `state.my_score`, `state.lead` | scores de toutes les équipes (publics), le vôtre, et votre avance sur la meilleure équipe adverse (négative si vous êtes en retard) |
-| `state.elements` | les batteries : `.pos`, `.is_free` (posée au sol, à prendre), `.carried_by_id`, `.present` (`False` pendant qu'une batterie capturée réapparaît) |
+| `state.elements` | les batteries : `.pos`, `.points` (ce que rapporte sa capture), `.is_free` (posée au sol, à prendre), `.carried_by_id`, `.present` (`False` pendant qu'une batterie capturée réapparaît) |
 | `state.nearest_battery(robot)` | batterie libre la plus proche, ou `None` |
+| `state.best_battery(robot)` | batterie libre la plus rentable : ses points divisés par le trajet (aller la chercher, puis la ramener à votre base) |
 | `state.free_batteries` | batteries posées au sol |
 | `state.carried_battery(robot)` | batterie portée par ce robot, ou `None` |
 | `state.element` | la première batterie (la seule à 2 équipes) |

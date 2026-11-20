@@ -74,7 +74,7 @@ class MyStrategy(Strategy):
         if state.phase == 1:
             if radar.carrying_element:
                 return state.move_towards(radar, state.my_base)
-            battery = state.nearest_battery(radar)
+            battery = state.nearest_battery(radar)   # ou state.best_battery(radar)
             if battery:
                 return state.move_towards(radar, battery.pos)
         # Rien à faire : on l'arrête, sinon il continuerait sur sa lancée
