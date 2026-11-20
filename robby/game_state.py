@@ -56,15 +56,25 @@ class Robot:
         self.shield_quiet: int = data.get("shield_quiet", 0)   # tours sans impact
         self.heading: float | None = data.get("heading")
         self.speed: float = data.get("speed") or 0
+        # Déchèterie (phase 2) : prisonnier porté par ce Collecteur, ou
+        # Collecteur ennemi qui porte ce robot (il est alors inactif)
+        self.captive_id: int | None = data.get("captive_id")
+        self.captured_by: int | None = data.get("captured_by")
 
     @property
     def pos(self) -> Point:
         return (self.x, self.y)
 
     @property
+    def captive(self) -> bool:
+        """Prisonnier d'un Collecteur ennemi : ses commandes sont ignorées."""
+        return self.captured_by is not None
+
+    @property
     def can_act(self) -> bool:
-        """Vivant et non pénalisé : une commande pour ce robot sera prise en compte."""
-        return self.alive and self.penalty == 0
+        """Vivant, libre et non pénalisé : une commande pour ce robot sera
+        prise en compte."""
+        return self.alive and self.penalty == 0 and not self.captive
 
     @property
     def moving(self) -> bool:
@@ -141,6 +151,10 @@ class GameState:
         state.firing_spot(k, cible)          où aller pour contourner un bouclier
         state.shielded_targets(k)            ennemis derrière un bouclier : tirer
                                              dessus l'use, puis le brise
+        state.dump_center, state.in_dump(p)  la déchèterie (phase 2)
+        state.grab_targets(c)                ennemis à l'arrêt qu'un Collecteur
+                                             peut attraper
+        state.captives                       prisonniers visibles
     """
 
     def __init__(self, msg: dict, team_id: int, config: dict | None = None):
@@ -175,6 +189,9 @@ class GameState:
         #   "shrink", "final"), target et target_center (prochain cercle
         #   annoncé), shrink_turn, end_turn.
         self.zone: dict = msg.get("zone") or self.calm_zone()
+        # Déchèterie (phase 2) : {"x", "y", "radius"}, au centre de la zone
+        # sûre de ce tour ; None en phase 1.
+        self.dump: dict | None = msg.get("dump")
 
     # ------------------------------------------------------------------
     # Robots
@@ -182,13 +199,20 @@ class GameState:
 
     @property
     def my_robots(self) -> list[Robot]:
-        """Vos robots vivants."""
-        return [r for r in self.robots if r.team_id == self.team_id and r.alive]
+        """Vos robots vivants et libres (pas prisonniers)."""
+        return [r for r in self.robots
+                if r.team_id == self.team_id and r.alive and not r.captive]
 
     @property
     def enemies(self) -> list[Robot]:
-        """Ennemis vivants actuellement détectés par vos radars."""
-        return [r for r in self.robots if r.team_id != self.team_id and r.alive]
+        """Ennemis vivants et libres actuellement détectés par vos radars."""
+        return [r for r in self.robots
+                if r.team_id != self.team_id and r.alive and not r.captive]
+
+    @property
+    def captives(self) -> list[Robot]:
+        """Prisonniers visibles (les vôtres et ceux de vos Collecteurs)."""
+        return [r for r in self.robots if r.alive and r.captive]
 
     def my_robots_of_type(self, robot_type: str) -> list[Robot]:
         return [r for r in self.my_robots if r.type == robot_type]
@@ -278,7 +302,10 @@ class GameState:
     # ------------------------------------------------------------------
 
     def max_speed(self, robot) -> float:
-        """Distance maximale parcourue en un tour (R 1500, D 2000, K 3000)."""
+        """Distance maximale parcourue en un tour (R 1500, C 1000, D 2000,
+        K 3000 ; un Collecteur qui porte un prisonnier : 600)."""
+        if getattr(robot, "captive_id", None) is not None:
+            return self.config["carry_speed"]
         return self.config["move_speed"].get(robot.type, 0)
 
     speed = max_speed
@@ -375,6 +402,32 @@ class GameState:
         """Centre du prochain cercle annoncé (sinon du cercle actuel) : le
         meilleur endroit où se regrouper avant que la tempête n'avance."""
         return tuple(self.zone.get("target_center") or self.zone["center"])
+
+    # ------------------------------------------------------------------
+    # Déchèterie (phase 2)
+    # ------------------------------------------------------------------
+
+    @property
+    def dump_center(self) -> Point | None:
+        """Centre de la déchèterie à la fin de ce tour (None en phase 1).
+        Elle suit le centre de la zone sûre."""
+        return (self.dump["x"], self.dump["y"]) if self.dump else None
+
+    def in_dump(self, pos) -> bool:
+        """Ce point est-il dans la déchèterie (à la fin de ce tour) ?"""
+        center = self.dump_center
+        return center is not None and \
+            distance(_pos(pos), center) <= self.dump["radius"]
+
+    def grab_targets(self, collector) -> list[Robot]:
+        """Ennemis visibles que ce Collecteur attraperait s'il restait là :
+        à l'arrêt (vitesse 0) et au contact (grab_radius). Phase 2 seulement."""
+        if not self.dump or collector.type != "C" or collector.captive_id is not None:
+            return []
+        reach = self.config["grab_radius"]
+        return [e for e in self.enemies
+                if e.speed == 0 and e.captive_id is None
+                and self.distance(collector, e) <= reach]
 
     def storm_radius(self, lookahead: int = 0) -> float:
         """Rayon sûr à la fin de ce tour (0), du suivant (1), etc."""

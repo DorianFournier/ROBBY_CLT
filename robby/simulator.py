@@ -16,7 +16,8 @@
 #      s'arrête net avant de toucher un ennemi ou d'entrer dans un bouclier
 #      ennemi. Sans commande, un ennemi visible continue donc sur sa lancée :
 #      c'est la prévision la plus simple de ce qu'il va faire.
-#   3. batterie (ramassage, capture), boucliers, zone
+#   3. batterie (ramassage, capture) ; en phase 2, déchèterie (dépôts, puis
+#      prises de prisonniers) ; boucliers, zone
 #
 # Limites : les ennemis invisibles n'existent pas pour le simulateur (sauf si
 # vous les ajoutez avec `extra`), et il ne connaît pas les commandes des autres
@@ -53,10 +54,16 @@ class SimRobot:
     shield_hp: int = 3             # résistance du bouclier
     shield_cooldown: int = 0       # tours avant de pouvoir le reposer
     shield_quiet: int = 0          # tours sans impact (recharge)
+    captive_id: int | None = None  # prisonnier porté (Collecteur)
+    captured_by: int | None = None  # Collecteur qui le porte (prisonnier)
 
     @property
     def pos(self):
         return (self.x, self.y)
+
+    @property
+    def captive(self):
+        return self.captured_by is not None
 
 
 @dataclass
@@ -78,13 +85,18 @@ class SimResult:
     carriers: dict = field(default_factory=dict)   # batterie -> porteur
     free_batteries: list = field(default_factory=list)   # positions au sol
     captures: list = field(default_factory=list)   # équipes qui ont capturé
+    # déchèterie (phase 2) : (Collecteur, robot pris) et (Collecteur, robot
+    # détruit, points)
+    grabs: list = field(default_factory=list)
+    dumps: list = field(default_factory=list)
 
     def robot(self, robot_id):
         return self.robots.get(robot_id)
 
     def alive(self, team_id=None):
         return [r for r in self.robots.values()
-                if r.alive and (team_id is None or r.team_id == team_id)]
+                if r.alive and not r.captive
+                and (team_id is None or r.team_id == team_id)]
 
 
 class TurnSimulator:
@@ -111,8 +123,15 @@ class TurnSimulator:
                                 speed=getattr(r, "speed", 0) or 0,
                                 shield_hp=getattr(r, "shield_hp", 3),
                                 shield_cooldown=getattr(r, "shield_cooldown", 0),
-                                shield_quiet=getattr(r, "shield_quiet", 0))
+                                shield_quiet=getattr(r, "shield_quiet", 0),
+                                captive_id=getattr(r, "captive_id", None),
+                                captured_by=getattr(r, "captured_by", None))
                        for r in state.robots]
+        c = state.config
+        self.dump_enabled = c.get("dump_enabled", False)
+        self.grab_radius = c.get("grab_radius", 700)
+        self.carry_speed = c.get("carry_speed", 600)
+        self.dump_points = c.get("dump_points", {})
         self.robots += list(extra)
 
     # ------------------------------------------------------------------
@@ -153,7 +172,7 @@ class TurnSimulator:
         start = shooter.pos if origin is None else origin
         reach, hit, shield = self.range, None, None
         for r in robots.values():
-            if not r.alive or r.team_id == shooter.team_id:
+            if not r.alive or r.team_id == shooter.team_id or r.captive:
                 continue
             t = ray_circle(start, angle, reach, r.pos, self.radius)
             if t is not None and t < reach:
@@ -169,6 +188,68 @@ class TurnSimulator:
         return hit, shield
 
     # ------------------------------------------------------------------
+    # Déchèterie (phase 2), comme le serveur
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _destroy(robots, r):
+        """Détruit `r` : son prisonnier est libéré sur place ; s'il était
+        prisonnier, son Collecteur est déchargé."""
+        r.alive = False
+        captive = robots.get(r.captive_id) if r.captive_id is not None else None
+        r.captive_id = None
+        if captive is not None:
+            captive.captured_by = None
+            captive.x, captive.y, captive.speed = r.x, r.y, 0
+        carrier = robots.get(r.captured_by) if r.captured_by is not None else None
+        r.captured_by = None
+        if carrier is not None:
+            carrier.captive_id = None
+
+    def _dump_and_grab(self, robots, result):
+        st = self.state
+        for r in robots.values():
+            if r.alive and r.captive and r.captured_by in robots:
+                c = robots[r.captured_by]
+                r.x, r.y = c.x, c.y
+        center = tuple(st.zone["center"])
+        dump_radius = st.dump["radius"] if st.dump else 0
+        for c in list(robots.values()):
+            if not c.alive or c.captive_id is None or c.captive_id not in robots:
+                continue
+            if distance(c.pos, center) > dump_radius:
+                continue
+            captive = robots[c.captive_id]
+            points = self.dump_points.get(captive.type, 0)
+            self._destroy(robots, captive)
+            result.deaths.append(captive.id)
+            result.killers[captive.id] = c.team_id
+            result.dumps.append((c.id, captive.id, points))
+        free = [r for r in robots.values() if r.alive and not r.captive]
+        by_target = {}
+        for c in free:
+            if c.type != "C" or c.captive_id is not None:
+                continue
+            best = None
+            for t in free:
+                if t.team_id == c.team_id or t.speed != 0 or t.captive_id is not None:
+                    continue
+                d = distance(c.pos, t.pos)
+                if d <= self.grab_radius and (best is None or (d, t.id) < best[:2]):
+                    best = (d, t.id, t)
+            if best is not None:
+                by_target.setdefault(best[2].id, []).append((best[0], c.id))
+        for tid, takers in by_target.items():
+            takers.sort(key=lambda x: x[0])
+            if len(takers) > 1 and takers[1][0] - takers[0][0] < 1e-9:
+                continue
+            c, t = robots[takers[0][1]], robots[tid]
+            c.captive_id, t.captured_by = t.id, c.id
+            t.x, t.y, t.speed, t.shield_direction = c.x, c.y, 0, None
+            c.speed = min(c.speed, self.carry_speed)
+            result.grabs.append((c.id, t.id))
+
+    # ------------------------------------------------------------------
 
     def run(self, commands_by_team: dict) -> SimResult:
         robots = self._copy()
@@ -178,7 +259,8 @@ class TurnSimulator:
             seen = set()
             for cmd in commands or []:
                 r = robots.get(cmd.get("robot_id"))
-                if r is None or r.team_id != team_id or not r.alive or r.penalty:
+                if (r is None or r.team_id != team_id or not r.alive or r.penalty
+                        or r.captive):
                     continue
                 if r.id in seen or not is_number(cmd.get("angle")):
                     r.penalty = 1                  # faute : pénalité (moteurs coupés)
@@ -225,7 +307,7 @@ class TurnSimulator:
                      for e in st.elements]
         for rid in result.killers:
             r = robots[rid]
-            r.alive = False
+            self._destroy(robots, r)
             result.deaths.append(rid)
             if r.carrying_element:          # la batterie tombe là où il était
                 r.carrying_element = False
@@ -236,15 +318,17 @@ class TurnSimulator:
         # 2. déplacements simultanés : TOUS les robots qui roulent (cap et
         #    vitesse gardés), sauf les pénalisés, dont les moteurs sont coupés
         for r in robots.values():
-            if not r.alive or r.penalty:
+            if not r.alive or r.penalty or r.captive:
                 r.speed = 0
+            elif r.captive_id is not None:      # Collecteur chargé : lent
+                r.speed = min(r.speed, self.carry_speed)
         moves = {}
         for r in robots.values():
             if r.speed > 0 and r.heading is not None:
                 dx, dy = direction(r.heading)
                 moves[r.id] = (dx * r.speed / SUBSTEPS, dy * r.speed / SUBSTEPS)
         movers = list(moves)
-        alive = [r for r in robots.values() if r.alive]
+        alive = [r for r in robots.values() if r.alive and not r.captive]
         start = {r.id: r.pos for r in alive}
         pos = dict(start)
         team = {r.id: r.team_id for r in alive}
@@ -354,9 +438,15 @@ class TurnSimulator:
         if result.captures:
             result.captured_by = me if me in result.captures else result.captures[0]
 
+        # déchèterie (phase 2) : les prisonniers suivent leur Collecteur ;
+        # dépôts, puis prises
+        if st.phase == 2 and self.dump_enabled:
+            self._dump_and_grab(robots, result)
+
         # boucliers
         for rid, angle in shields.items():
-            if robots[rid].alive and robots[rid].shield_cooldown == 0:
+            if robots[rid].alive and robots[rid].shield_cooldown == 0 \
+                    and not robots[rid].captive:
                 robots[rid].shield_direction = angle
         self._recharge_shields(robots, result.shield_damage)
 
@@ -364,7 +454,7 @@ class TurnSimulator:
         if st.phase == 2:
             for r in robots.values():
                 if r.alive and not st.in_zone(r.pos):
-                    r.alive = False
+                    self._destroy(robots, r)
                     result.zone_deaths.append(r.id)
                     result.deaths.append(r.id)
         return result

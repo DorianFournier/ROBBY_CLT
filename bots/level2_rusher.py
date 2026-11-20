@@ -39,13 +39,21 @@ class RusherBot(Strategy):
 
     def collector(self, state, collector):
         """Phase 1 : la batterie libre la plus proche, puis retour à la base.
-        Phase 2 : il suit le Radar (il n'a plus rien à ramasser)."""
+        Phase 2 : il attrape l'ennemi à l'arrêt le plus proche et le porte à
+        la déchèterie ; sinon il suit le Radar."""
         if state.phase == 1:
             if collector.carrying_element:
                 return state.move_towards(collector, state.my_base)
             battery = state.nearest_battery(collector)
             if battery:
                 return state.move_towards(collector, battery.pos)
+        if state.dump:
+            if collector.captive_id is not None:
+                return state.move_towards(collector, state.dump_center)
+            stopped = [e for e in state.enemies if e.speed == 0
+                       and e.captive_id is None and collector.distance_to(e) <= 3000]
+            if stopped:
+                return state.move_towards(collector, state.nearest(collector, stopped))
         radars = state.my_robots_of_type("R")
         if radars:
             return state.move_towards(collector, state.clamp_to_zone(radars[0].pos, 2),

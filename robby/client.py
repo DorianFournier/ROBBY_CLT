@@ -29,6 +29,9 @@ def check_commands(state: GameState, commands: list[dict]) -> list[str]:
         seen.add(robot.id)
         if not robot.alive:
             errors.append(f"{cmd} : le robot {robot.id} est détruit")
+        elif robot.captive:
+            errors.append(f"{cmd} : le robot {robot.id} est prisonnier "
+                          f"(commande ignorée)")
         action = cmd.get("action")
         if action not in ("MOVE", "SHOOT", "SHIELD"):
             errors.append(f"{cmd} : action inconnue")

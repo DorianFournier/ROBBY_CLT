@@ -45,6 +45,32 @@ ZONE_LATER = 0.1     # hors de la zone dans 2 tours
 COAST = 0.2          # sur sa lancée, finirait hors de la zone au tour suivant
 SHIELD_WEAR = 120    # un point retiré à un bouclier ennemi
 SHIELD_BREAK = 350   # bouclier ennemi brisé (indisponible plusieurs tours)
+# déchèterie (phase 2)
+DUMP_BONUS = 0.5     # un ennemi déposé vaut 1,5 fois sa destruction
+CAPTIVE_HELD = 0.7   # part de sa valeur que vaut un prisonnier tenu
+TO_DUMP = 0.15       # par unité qui reste jusqu'à la déchèterie
+GRAB_DANGER = 0.3    # un de nos robots à l'arrêt près d'un Collecteur ennemi
+GRAB_DANGER_RANGE = 1800
+
+
+def captives_held(res, team_id):
+    """[(Collecteur, prisonnier)] de l'équipe `team_id` après le tour."""
+    held = []
+    for c in res.robots.values():
+        if c.alive and c.team_id == team_id and c.captive_id in res.robots:
+            held.append((c, res.robots[c.captive_id]))
+    return held
+
+
+def grab_threatened(res, team_id):
+    """Nos robots libres à l'arrêt, près d'un Collecteur ennemi libre :
+    ils pourraient être attrapés au tour suivant."""
+    hunters = [c for c in res.robots.values()
+               if c.alive and not c.captive and c.type == "C"
+               and c.team_id != team_id and c.captive_id is None]
+    return [r for r in res.robots.values()
+            if r.alive and not r.captive and r.team_id == team_id and r.speed == 0
+            and any(distance(r.pos, c.pos) <= GRAB_DANGER_RANGE for c in hunters)]
 
 
 class SimulatorBot(Strategy):
@@ -217,6 +243,14 @@ class SimulatorBot(Strategy):
                     cands.append(st.move_towards(robot, battery.pos))
             for d in st.my_robots_of_type("D") + st.my_robots_of_type("R"):
                 cands.append(st.move_towards(robot, d, stop_at=700))
+            if st.dump:                    # phase 2 : la déchèterie
+                if robot.captive_id is not None:
+                    cands.append(st.move_towards(robot, st.dump_center))
+                else:
+                    for e in st.enemies:
+                        if e.speed == 0 and e.captive_id is None and \
+                                robot.distance_to(e) <= 4000:
+                            cands.append(st.move_towards(robot, e))
         elif robot.type == "R":
             if st.phase == 1 and collector is not None:   # escorter le Collecteur
                 cands.append(st.move_towards(robot, collector, stop_at=1200))
@@ -297,6 +331,21 @@ class SimulatorBot(Strategy):
                 gain = ENEMY_VALUE[r.type] + (CARRIER_BONUS if before.carrying_element
                                               else 0)
                 value += gain * (0.5 if r.ghost else 1.0)
+        for _, rid, _ in res.dumps:          # déposé à la déchèterie : 1,5 fois
+            if res.robots[rid].team_id != me and res.killers.get(rid) == me:
+                value += DUMP_BONUS * ENEMY_VALUE[res.robots[rid].type]
+
+        # --- 1 ter. déchèterie : prisonniers tenus (par nous, ou par eux)
+        if st.dump:
+            center = st.dump_center
+            for c, captive in captives_held(res, me):
+                value += CAPTIVE_HELD * ENEMY_VALUE[captive.type]
+                value -= TO_DUMP * distance(c.pos, center)
+            for r in res.robots.values():
+                if r.alive and r.team_id == me and r.captive:
+                    value -= CAPTIVE_HELD * OWN_VALUE[r.type]
+            for r in grab_threatened(res, me):
+                value -= GRAB_DANGER * OWN_VALUE[r.type]
 
         # --- 1 bis. boucliers usés ou brisés (anti-blocage)
         for did, damage in res.shield_damage.items():

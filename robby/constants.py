@@ -35,6 +35,12 @@ DEFAULT_CONFIG = {
     "shield_hp": 3,             # résistance d'un bouclier (tirs arrêtés)
     "shield_break_turns": 4,    # tours sans bouclier quand il est brisé
     "shield_recharge_delay": 3, # tours sans impact avant de regagner 1 point
+    # déchèterie (phase 2) : voir le README
+    "dump_enabled": True,
+    "grab_radius": 700,         # contact pour attraper un ennemi à l'arrêt
+    "carry_speed": 600,         # vitesse max d'un Collecteur chargé
+    "dump_radius": 700,         # rayon de la déchèterie
+    "dump_points": {"K": 375, "D": 750, "C": 750, "R": 1125},
     "bases": {},
     "teams": {},
 }

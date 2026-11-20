@@ -83,7 +83,11 @@ class MyStrategy(Strategy):
             battery = state.nearest_battery(collector)   # ou state.best_battery
             if battery:
                 return state.move_towards(collector, battery.pos)
-        # Rien à faire : on l'arrête, sinon il continuerait sur sa lancée
+        # TODO phase 2 : la déchèterie. Attraper un ennemi à l'arrêt
+        #      (state.grab_targets, ou foncer sur un ennemi immobile), puis le
+        #      porter à state.dump_center (collector.captive_id n'est plus None).
+        # Rien à faire : on l'arrête, sinon il continuerait sur sa lancée...
+        # mais attention : en phase 2, un robot arrêté peut être attrapé !
         return state.stop(collector)
 
     def play_radar(self, state, radar):
