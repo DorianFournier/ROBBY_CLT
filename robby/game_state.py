@@ -41,7 +41,7 @@ class Robot:
     def __init__(self, data: dict):
         self.id: int = data["id"]
         self.team_id: int = data["team"]
-        self.type: str = data["type"]  # "R", "D" ou "K"
+        self.type: str = data["type"]  # "R", "C", "D" ou "K"
         self.x: float = data["x"]
         self.y: float = data["y"]
         self.alive: bool = data["alive"]
@@ -56,15 +56,25 @@ class Robot:
         self.shield_quiet: int = data.get("shield_quiet", 0)   # tours sans impact
         self.heading: float | None = data.get("heading")
         self.speed: float = data.get("speed") or 0
+        # Déchèterie (phase 2) : prisonnier porté par ce Collecteur, ou
+        # Collecteur ennemi qui porte ce robot (il est alors inactif)
+        self.captive_id: int | None = data.get("captive_id")
+        self.captured_by: int | None = data.get("captured_by")
 
     @property
     def pos(self) -> Point:
         return (self.x, self.y)
 
     @property
+    def captive(self) -> bool:
+        """Prisonnier d'un Collecteur ennemi : ses commandes sont ignorées."""
+        return self.captured_by is not None
+
+    @property
     def can_act(self) -> bool:
-        """Vivant et non pénalisé : une commande pour ce robot sera prise en compte."""
-        return self.alive and self.penalty == 0
+        """Vivant, libre et non pénalisé : une commande pour ce robot sera
+        prise en compte."""
+        return self.alive and self.penalty == 0 and not self.captive
 
     @property
     def moving(self) -> bool:
@@ -107,7 +117,7 @@ class Element:
 
     @property
     def is_free(self) -> bool:
-        """Posée au sol : un Radar peut la ramasser."""
+        """Posée au sol : un Collecteur peut la ramasser."""
         return self.present and self.carried_by_id is None
 
     def __repr__(self):
@@ -141,6 +151,10 @@ class GameState:
         state.firing_spot(k, cible)          où aller pour contourner un bouclier
         state.shielded_targets(k)            ennemis derrière un bouclier : tirer
                                              dessus l'use, puis le brise
+        state.dump_center, state.in_dump(p)  la déchèterie (phase 2)
+        state.grab_targets(c)                ennemis à l'arrêt qu'un Collecteur
+                                             peut attraper
+        state.captives                       prisonniers visibles
     """
 
     def __init__(self, msg: dict, team_id: int, config: dict | None = None):
@@ -175,6 +189,9 @@ class GameState:
         #   "shrink", "final"), target et target_center (prochain cercle
         #   annoncé), shrink_turn, end_turn.
         self.zone: dict = msg.get("zone") or self.calm_zone()
+        # Déchèterie (phase 2) : {"x", "y", "radius"}, au centre de la zone
+        # sûre de ce tour ; None en phase 1.
+        self.dump: dict | None = msg.get("dump")
 
     # ------------------------------------------------------------------
     # Robots
@@ -182,13 +199,20 @@ class GameState:
 
     @property
     def my_robots(self) -> list[Robot]:
-        """Vos robots vivants."""
-        return [r for r in self.robots if r.team_id == self.team_id and r.alive]
+        """Vos robots vivants et libres (pas prisonniers)."""
+        return [r for r in self.robots
+                if r.team_id == self.team_id and r.alive and not r.captive]
 
     @property
     def enemies(self) -> list[Robot]:
-        """Ennemis vivants actuellement détectés par vos radars."""
-        return [r for r in self.robots if r.team_id != self.team_id and r.alive]
+        """Ennemis vivants et libres actuellement détectés par vos radars."""
+        return [r for r in self.robots
+                if r.team_id != self.team_id and r.alive and not r.captive]
+
+    @property
+    def captives(self) -> list[Robot]:
+        """Prisonniers visibles (les vôtres et ceux de vos Collecteurs)."""
+        return [r for r in self.robots if r.alive and r.captive]
 
     def my_robots_of_type(self, robot_type: str) -> list[Robot]:
         return [r for r in self.my_robots if r.type == robot_type]
@@ -208,15 +232,28 @@ class GameState:
 
     @property
     def free_batteries(self) -> list[Element]:
-        """Batteries posées au sol, qu'un Radar peut ramasser."""
+        """Batteries posées au sol, qu'un Collecteur peut ramasser."""
         return [e for e in self.elements if e.is_free]
 
     def nearest_battery(self, origin) -> Element | None:
-        """Batterie libre la plus proche de `origin` (robot ou point), ou None."""
+        """Batterie libre la plus proche de `origin` (robot ou point), ou None.
+        À égalité (deux batteries à la même distance), celle de droite."""
         return self.nearest(origin, self.free_batteries)
 
+    def side(self, point) -> float:
+        """Angle (0 à 360, sens horaire) entre « tout droit » (de votre base
+        vers le centre) et la direction de `point` vue de votre base : petit
+        = sur votre droite. Sert à départager deux choix à égalité de la
+        même façon pour toutes les équipes, quelle que soit leur place."""
+        base = self.my_base
+        devant = angle_to(base, self.center)
+        cap = angle_to(base, _pos(point))
+        if devant is None or cap is None:
+            return 0.0
+        return round((cap - devant) % 360, 6)
+
     def best_battery(self, robot) -> Element | None:
-        """Batterie libre la plus RENTABLE pour ce Radar : ses points divisés
+        """Batterie libre la plus RENTABLE pour ce Collecteur : ses points divisés
         par le trajet (aller la chercher, puis la ramener à votre base).
         La grosse batterie du centre rapporte plus, mais tout le monde y va."""
         base = self.my_base
@@ -225,18 +262,40 @@ class GameState:
             trajet = distance(robot.pos, e.pos) + distance(e.pos, base)
             return (e.points or 1) / (trajet + 1000)
 
-        return max(self.free_batteries, key=rentabilite, default=None)
+        if not self.free_batteries:
+            return None
+        # deux batteries symétriques (à 0,01 % près) : celle de droite
+        best = max(rentabilite(e) for e in self.free_batteries)
+        ex_aequo = [e for e in self.free_batteries
+                    if rentabilite(e) >= best * (1 - 1e-4)]
+        return min(ex_aequo, key=self.side)
 
     def carried_battery(self, robot) -> Element | None:
         """Batterie portée par `robot` (ou None)."""
         return next((e for e in self.elements if e.carried_by_id == robot.id), None)
 
-    @staticmethod
-    def nearest(origin, candidates):
-        """Le robot de `candidates` le plus proche de `origin` (robot ou point)."""
-        if not candidates:
-            return None
-        return min(candidates, key=lambda r: distance(_pos(origin), r.pos))
+    def nearest(self, origin, candidates):
+        """Le robot, la batterie ou le point de `candidates` le plus proche de
+        `origin` (robot ou point). À égalité (à une unité près), celui de
+        droite (voir `side`) : toutes les équipes départagent de la même façon."""
+        ordre = self.by_distance(origin, candidates)
+        return ordre[0] if ordre else None
+
+    def by_distance(self, origin, candidates, key=None):
+        """`candidates` du plus proche au plus loin de `origin`. Deux
+        candidats à moins d'une unité d'écart sont à égalité : celui de droite
+        d'abord. `key(c)` (facultatif) passe avant la distance."""
+        o = _pos(origin)
+        items = sorted(candidates, key=lambda c: ((key(c),) if key else ()) +
+                       (distance(o, _pos(c)),))
+        out, group = [], []
+        for c in items:
+            if group and ((key and key(c) != key(group[0]))
+                          or distance(o, _pos(c)) - distance(o, _pos(group[0])) > 1.0):
+                out += sorted(group, key=self.side)
+                group = []
+            group.append(c)
+        return out + sorted(group, key=self.side)
 
     # ------------------------------------------------------------------
     # Distances, arène
@@ -278,7 +337,10 @@ class GameState:
     # ------------------------------------------------------------------
 
     def max_speed(self, robot) -> float:
-        """Distance maximale parcourue en un tour (R 1500, D 2000, K 3000)."""
+        """Distance maximale parcourue en un tour (R 1500, C 1000, D 2000,
+        K 3000 ; un Collecteur qui porte un prisonnier : 600)."""
+        if getattr(robot, "captive_id", None) is not None:
+            return self.config["carry_speed"]
         return self.config["move_speed"].get(robot.type, 0)
 
     speed = max_speed
@@ -375,6 +437,32 @@ class GameState:
         """Centre du prochain cercle annoncé (sinon du cercle actuel) : le
         meilleur endroit où se regrouper avant que la tempête n'avance."""
         return tuple(self.zone.get("target_center") or self.zone["center"])
+
+    # ------------------------------------------------------------------
+    # Déchèterie (phase 2)
+    # ------------------------------------------------------------------
+
+    @property
+    def dump_center(self) -> Point | None:
+        """Centre de la déchèterie à la fin de ce tour (None en phase 1).
+        Elle suit le centre de la zone sûre."""
+        return (self.dump["x"], self.dump["y"]) if self.dump else None
+
+    def in_dump(self, pos) -> bool:
+        """Ce point est-il dans la déchèterie (à la fin de ce tour) ?"""
+        center = self.dump_center
+        return center is not None and \
+            distance(_pos(pos), center) <= self.dump["radius"]
+
+    def grab_targets(self, collector) -> list[Robot]:
+        """Ennemis visibles que ce Collecteur attraperait s'il restait là :
+        à l'arrêt (vitesse 0) et au contact (grab_radius). Phase 2 seulement."""
+        if not self.dump or collector.type != "C" or collector.captive_id is not None:
+            return []
+        reach = self.config["grab_radius"]
+        return [e for e in self.enemies
+                if e.speed == 0 and e.captive_id is None
+                and self.distance(collector, e) <= reach]
 
     def storm_radius(self, lookahead: int = 0) -> float:
         """Rayon sûr à la fin de ce tour (0), du suivant (1), etc."""

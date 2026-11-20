@@ -6,9 +6,9 @@
 #
 #   1. Plan de départ : celui du tacticien (bot3).
 #   2. Pour chaque robot, une liste de commandes candidates (continuer sur
-#      sa lancée, s'arrêter, aller
-#      vers la batterie, tirer sur chaque cible, contourner un bouclier,
-#      8 directions, tourner le bouclier vers chaque menace...).
+#      sa lancée, s'arrêter, aller vers chaque batterie (Collecteur),
+#      escorter le Collecteur (Radar), tirer sur chaque cible, contourner un
+#      bouclier, 8 directions, tourner le bouclier vers chaque menace...).
 #   3. Chaque plan est JOUÉ dans le simulateur de tour (robby/simulator.py,
 #      mêmes règles que le serveur) contre plusieurs hypothèses sur les
 #      ennemis : ils restent sur place, ou ils foncent sur nous. Leurs
@@ -31,12 +31,16 @@ from robby.strategy import Strategy
 
 MEMORY = 3            # tours pendant lesquels un ennemi disparu est supposé là
 MAX_EVALS = 260       # plans évalués au plus par tour
+# Gain minimal pour changer de plan : deux coups presque équivalents (à
+# moins d'un point près) ne départagent pas les équipes selon leur place
+# (positions arrondies, arène carrée) : on garde le premier essayé.
+GAIN_MIN = 1.0
 PASSES = 2
 
-OWN_VALUE = {"R": 1400, "K": 1000, "D": 700}     # ce que vaut un robot à nous
-ENEMY_VALUE = {"R": 900, "K": 1000, "D": 500}    # intérêt de détruire un ennemi
+OWN_VALUE = {"R": 1400, "C": 1000, "K": 1000, "D": 700}   # un robot à nous
+ENEMY_VALUE = {"R": 900, "C": 700, "K": 1000, "D": 500}   # détruire un ennemi
 CARRIER_BONUS = 600
-TARGET_ORDER = {"R": 0, "K": 1, "D": 2}
+TARGET_ORDER = {"C": 0, "R": 0, "K": 1, "D": 2}
 
 DANGER = 0.55        # part de la valeur d'un robot qu'un K ennemi menace
 OPPORTUNITY = 0.35   # part de la valeur d'un ennemi que notre K menace
@@ -45,6 +49,32 @@ ZONE_LATER = 0.1     # hors de la zone dans 2 tours
 COAST = 0.2          # sur sa lancée, finirait hors de la zone au tour suivant
 SHIELD_WEAR = 120    # un point retiré à un bouclier ennemi
 SHIELD_BREAK = 350   # bouclier ennemi brisé (indisponible plusieurs tours)
+# déchèterie (phase 2)
+DUMP_BONUS = 0.5     # un ennemi déposé vaut 1,5 fois sa destruction
+CAPTIVE_HELD = 0.7   # part de sa valeur que vaut un prisonnier tenu
+TO_DUMP = 0.15       # par unité qui reste jusqu'à la déchèterie
+GRAB_DANGER = 0.3    # un de nos robots à l'arrêt près d'un Collecteur ennemi
+GRAB_DANGER_RANGE = 1800
+
+
+def captives_held(res, team_id):
+    """[(Collecteur, prisonnier)] de l'équipe `team_id` après le tour."""
+    held = []
+    for c in res.robots.values():
+        if c.alive and c.team_id == team_id and c.captive_id in res.robots:
+            held.append((c, res.robots[c.captive_id]))
+    return held
+
+
+def grab_threatened(res, team_id):
+    """Nos robots libres à l'arrêt, près d'un Collecteur ennemi libre :
+    ils pourraient être attrapés au tour suivant."""
+    hunters = [c for c in res.robots.values()
+               if c.alive and not c.captive and c.type == "C"
+               and c.team_id != team_id and c.captive_id is None]
+    return [r for r in res.robots.values()
+            if r.alive and not r.captive and r.team_id == team_id and r.speed == 0
+            and any(distance(r.pos, c.pos) <= GRAB_DANGER_RANGE for c in hunters)]
 
 
 class SimulatorBot(Strategy):
@@ -53,6 +83,7 @@ class SimulatorBot(Strategy):
         self.scout = TacticianBot()   # plan de départ + point de chasse
         self.memory = {}                  # id -> (team, type, pos, tour, bouclier)
         self.evals = 0
+        self.gain_min = GAIN_MIN
 
     def on_game_start(self, team_id, config):
         self.scout.on_game_start(team_id, config)
@@ -93,7 +124,7 @@ class SimulatorBot(Strategy):
 
         actors = [r for r in state.my_robots if r.can_act]
         # ordre : Destructeurs (tirs), Défenseur, puis Radar
-        actors.sort(key=lambda r: "KDR".index(r.type))
+        actors.sort(key=lambda r: "KDRC".index(r.type))
         plan = {r.id: base_plan.get(r.id) for r in actors}
         candidates = {r.id: self.candidates(r, base_plan.get(r.id)) for r in actors}
 
@@ -108,7 +139,7 @@ class SimulatorBot(Strategy):
                         continue
                     trial = {**plan, robot.id: cand}
                     value = self.score(trial)
-                    if value > best + 1e-6:
+                    if value > best + self.gain_min:
                         best, plan, improved = value, trial, True
             if not improved or self.evals >= MAX_EVALS:
                 break
@@ -125,7 +156,7 @@ class SimulatorBot(Strategy):
             base = st.base_of(team_id)
             if base is not None:
                 left = distance(pos, base)
-                walked = min(left, st.config["move_speed"]["R"]
+                walked = min(left, st.config["move_speed"]["C"]
                              * (st.turn - seen_turn))
                 if left > 1:
                     pos = (pos[0] + (base[0] - pos[0]) * walked / left,
@@ -164,7 +195,7 @@ class SimulatorBot(Strategy):
                 continue
             if e.penalty:
                 continue
-            near = min(mine, key=lambda r: distance(r.pos, e.pos))
+            near = self.state.nearest(e, mine)
             stop = 2600 if e.type == "K" else 1500
             gap = distance(e.pos, near.pos) - stop
             if gap > 1:
@@ -178,7 +209,7 @@ class SimulatorBot(Strategy):
         """Robot de `targets` que `shooter` toucherait vraiment (le plus
         intéressant), en visant chacun depuis `origin`."""
         start = shooter.pos if origin is None else origin
-        best = None
+        hits = []
         for t in targets:
             if distance(start, t.pos) - self.sim.radius > self.sim.range:
                 continue
@@ -186,11 +217,13 @@ class SimulatorBot(Strategy):
             if angle is None:
                 continue
             hit, _ = self.sim.first_hit(robots, shooter, angle, origin=start)
-            if hit is not None and hit.alive and hit.team_id != shooter.team_id:
-                if best is None or (not hit.carrying_element, TARGET_ORDER[hit.type]) \
-                        < (not best.carrying_element, TARGET_ORDER[best.type]):
-                    best = hit
-        return best
+            if hit is not None and hit.alive and hit.team_id != shooter.team_id \
+                    and hit not in hits:
+                hits.append(hit)
+        # le plus intéressant ; à égalité, le plus proche, puis celui de droite
+        ordre = self.state.by_distance(start, hits, key=lambda h: (
+            not h.carrying_element, TARGET_ORDER[h.type]))
+        return ordre[0] if ordre else None
 
     # ==================================================================
     # Candidats
@@ -200,35 +233,63 @@ class SimulatorBot(Strategy):
         st = self.state
         # None : aucune commande, le robot continue sur sa lancée
         cands = [None, base, st.stop(robot)]
-        for k in range(8):       # 8 directions
-            cands.append(move(robot, angle=45 * k, speed=st.max_speed(robot)))
+        # 8 directions, comptées depuis « tout droit » (de la base vers le
+        # centre) : toutes les équipes essaient les mêmes coups dans le même
+        # ordre, quelle que soit leur place (à égalité, le premier l'emporte)
+        devant = angle_to(st.my_base, st.center) or 0
+        for k in range(8):
+            a = round((devant + 45 * k) % 360, 6)
+            cands.append(move(robot, angle=a, speed=st.max_speed(robot)))
             if robot.type != "R":
-                cands.append(move(robot, angle=45 * k, speed=st.max_speed(robot) / 2))
-        threats = [r for r in self.sim.robots if r.team_id != self.me and r.alive]
+                cands.append(move(robot, angle=a, speed=st.max_speed(robot) / 2))
+
+        def ordre(items):
+            """Du plus proche au plus loin, à égalité celui de droite."""
+            return st.by_distance(robot, list(items))
+
+        threats = ordre(r for r in self.sim.robots if r.team_id != self.me and r.alive)
+        enemies = ordre(st.enemies)
+        ghosts = ordre(self.ghosts)
         radar = next(iter(st.my_robots_of_type("R")), None)
 
-        if robot.type == "R":
+        collector = next(iter(st.my_robots_of_type("C")), None)
+
+        if robot.type == "C":
             if st.phase == 1 and robot.carrying_element:
                 cands.append(st.move_towards(robot, st.my_base))
             if st.phase == 1:
-                for battery in st.free_batteries:
+                for battery in ordre(st.free_batteries):
                     cands.append(st.move_towards(robot, battery.pos))
+            for d in st.my_robots_of_type("D") + st.my_robots_of_type("R"):
+                cands.append(st.move_towards(robot, d, stop_at=700))
+            if st.dump:                    # phase 2 : la déchèterie
+                if robot.captive_id is not None:
+                    cands.append(st.move_towards(robot, st.dump_center))
+                else:
+                    for e in enemies:
+                        if e.speed == 0 and e.captive_id is None and \
+                                robot.distance_to(e) <= 4000:
+                            cands.append(st.move_towards(robot, e))
+        elif robot.type == "R":
+            if st.phase == 1 and collector is not None:   # escorter le Collecteur
+                cands.append(st.move_towards(robot, collector, stop_at=1200))
             if self.hunt:
                 cands.append(st.move_towards(robot, self.hunt))
             for d in st.my_robots_of_type("D") + st.my_robots_of_type("K"):
                 cands.append(st.move_towards(robot, d, stop_at=600))
         elif robot.type == "K":
-            for e in st.targets_in_range(robot) + st.shielded_targets(robot):
+            tirs = ordre(st.targets_in_range(robot)) + ordre(st.shielded_targets(robot))
+            for e in tirs:
                 cands.append(st.shoot_at(robot, e))   # derrière un bouclier : l'user
-            for g in self.ghosts:
+            for g in ghosts:
                 if g.carrying_element:   # intercepter le porteur
                     cands.append(st.move_towards(robot, g.pos, stop_at=2000))
-            for g in self.ghosts:    # tir « à l'aveugle » sur un ennemi disparu
+            for g in ghosts:    # tir « à l'aveugle » sur un ennemi disparu
                 if (distance(robot.pos, g.pos) - st.robot_radius
                         <= st.config["destructor_range"]
                         and st.aim(robot, g) is not None):   # pas sur nous-mêmes
                     cands.append(st.shoot_at(robot, g))
-            for e in st.enemies:
+            for e in enemies:
                 spot = st.firing_spot(robot, e)
                 if spot:
                     cands.append(st.move_towards(robot, spot))
@@ -252,7 +313,7 @@ class SimulatorBot(Strategy):
                         cands.append(st.move_towards(robot, spot))
             if radar:
                 cands.append(st.move_towards(robot, radar, stop_at=700))
-        if self.hunt and robot.type != "R":
+        if self.hunt and robot.type not in "RC":
             cands.append(st.move_towards(robot, self.hunt))
         # sans doublons, en gardant l'ordre
         unique = []
@@ -290,6 +351,21 @@ class SimulatorBot(Strategy):
                 gain = ENEMY_VALUE[r.type] + (CARRIER_BONUS if before.carrying_element
                                               else 0)
                 value += gain * (0.5 if r.ghost else 1.0)
+        for _, rid, _ in res.dumps:          # déposé à la déchèterie : 1,5 fois
+            if res.robots[rid].team_id != me and res.killers.get(rid) == me:
+                value += DUMP_BONUS * ENEMY_VALUE[res.robots[rid].type]
+
+        # --- 1 ter. déchèterie : prisonniers tenus (par nous, ou par eux)
+        if st.dump:
+            center = st.dump_center
+            for c, captive in captives_held(res, me):
+                value += CAPTIVE_HELD * ENEMY_VALUE[captive.type]
+                value -= TO_DUMP * distance(c.pos, center)
+            for r in res.robots.values():
+                if r.alive and r.team_id == me and r.captive:
+                    value -= CAPTIVE_HELD * OWN_VALUE[r.type]
+            for r in grab_threatened(res, me):
+                value -= GRAB_DANGER * OWN_VALUE[r.type]
 
         # --- 1 bis. boucliers usés ou brisés (anti-blocage)
         for did, damage in res.shield_damage.items():
@@ -311,9 +387,9 @@ class SimulatorBot(Strategy):
             for c in miens:
                 value += 2500 - 0.15 * distance(c.pos, st.my_base)
             value -= 1500 * (len(porteurs) - len(miens))   # porteurs ennemis
-            radars = [r for r in mine if r.type == "R" and not r.carrying_element]
-            if radars and res.free_batteries and not miens:
-                value -= 0.3 * min(distance(r.pos, b) for r in radars
+            collecteurs = [r for r in mine if r.type == "C" and not r.carrying_element]
+            if collecteurs and res.free_batteries and not miens:
+                value -= 0.3 * min(distance(r.pos, b) for r in collecteurs
                                    for b in res.free_batteries)
 
         # --- 3. tour suivant : danger (K ennemis) et occasions (nos K)
@@ -342,12 +418,18 @@ class SimulatorBot(Strategy):
                 if not st.in_zone(coast, 1, inset=st.robot_radius):
                     value -= COAST * OWN_VALUE[r.type]
 
-        # --- 5. cohésion : sans Radar proche, un K est aveugle
+        # --- 5. cohésion : sans Radar proche, un K est aveugle. En phase 1,
+        #        le Collecteur part chercher les batteries : c'est au Radar de
+        #        rester près de lui (on voit qui vient l'intercepter).
         radar = next((r for r in mine if r.type == "R"), None)
         if radar is not None:
             reach = st.config["radar_range"]
             for r in mine:
-                if r is not radar:
+                if r is radar:
+                    continue
+                if r.type == "C" and st.phase == 1:
+                    value -= 0.08 * max(0.0, distance(r.pos, radar.pos) - 2000)
+                else:
                     value -= 0.08 * max(0.0, distance(r.pos, radar.pos) - 0.8 * reach)
             # garder le contact avec les ennemis connus
             value += 60 * sum(1 for e in enemies

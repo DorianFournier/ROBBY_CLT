@@ -201,3 +201,24 @@ def test_shielded_targets_and_shield_ready():
     assert not d.shield_ready
     errors = check_commands(broken, [shield(12, angle=0)])
     assert errors and "brisé" in errors[0]
+
+
+def test_ties_are_broken_on_the_right_for_every_team():
+    """Deux batteries à la même distance : chaque équipe prend celle de sa
+    droite (vue de sa base, face au centre). Toutes les places font donc le
+    même choix, et chaque petite batterie n'a qu'un seul prétendant."""
+    from robby import GameState
+    elements = [{"id": 0, "x": 7500, "y": 7500, "carried_by_id": None, "points": 1000},
+                {"id": 1, "x": 4500, "y": 4500, "carried_by_id": None, "points": 500},
+                {"id": 2, "x": 10500, "y": 4500, "carried_by_id": None, "points": 500},
+                {"id": 3, "x": 10500, "y": 10500, "carried_by_id": None, "points": 500},
+                {"id": 4, "x": 4500, "y": 10500, "carried_by_id": None, "points": 500}]
+    bases = {"1": (500, 7500), "2": (14500, 7500), "3": (7500, 500), "4": (7500, 14500)}
+    choix = {}
+    for t, base in bases.items():
+        st = GameState({"turn": 1, "phase": 1, "robots": [], "elements": elements},
+                       int(t), {"bases": bases})
+        choix[t] = st.nearest_battery(base).id
+    # équipe 1 (à gauche, face à l'est) : sa droite est au sud
+    assert choix == {"1": 4, "2": 2, "3": 1, "4": 3}
+    assert len(set(choix.values())) == 4

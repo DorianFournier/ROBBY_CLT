@@ -1,6 +1,8 @@
 # bots/level2_rusher.py
 # NIVEAU 2 : « fonceur », aucune prudence, aucune mémoire.
-#   - Radar : va droit sur la batterie puis la ramène ; en phase 2, suit son K.
+#   - Collecteur : va droit sur la batterie la plus proche puis la ramène.
+#   - Radar : accompagne le Collecteur en phase 1, puis suit son Destructeur
+#     en phase 2 (il lui donne la vision).
 #   - Destructeur : tire sur l'ennemi le plus proche qu'il peut toucher, sinon
 #     fonce vers l'ennemi visible le plus proche ; sinon reste près du Radar.
 #   - Défenseur : tourne son bouclier vers l'ennemi le plus proche, sinon
@@ -24,6 +26,8 @@ class RusherBot(Strategy):
                 command = state.move_towards(robot, escape)
             elif robot.type == "R":
                 command = self.radar(state, robot)
+            elif robot.type == "C":
+                command = self.collector(state, robot)
             elif robot.type == "K":
                 command = self.destructor(state, robot)
             else:
@@ -33,13 +37,36 @@ class RusherBot(Strategy):
                 commands.append(command)
         return commands
 
-    def radar(self, state, radar):
+    def collector(self, state, collector):
+        """Phase 1 : la batterie libre la plus proche, puis retour à la base.
+        Phase 2 : il attrape l'ennemi à l'arrêt le plus proche et le porte à
+        la déchèterie ; sinon il suit le Radar."""
         if state.phase == 1:
-            if radar.carrying_element:
-                return state.move_towards(radar, state.my_base)
-            battery = state.nearest_battery(radar)
+            if collector.carrying_element:
+                return state.move_towards(collector, state.my_base)
+            battery = state.nearest_battery(collector)
             if battery:
-                return state.move_towards(radar, battery.pos)
+                return state.move_towards(collector, battery.pos)
+        if state.dump:
+            if collector.captive_id is not None:
+                return state.move_towards(collector, state.dump_center)
+            stopped = [e for e in state.enemies if e.speed == 0
+                       and e.captive_id is None and collector.distance_to(e) <= 3000]
+            if stopped:
+                return state.move_towards(collector, state.nearest(collector, stopped))
+        radars = state.my_robots_of_type("R")
+        if radars:
+            return state.move_towards(collector, state.clamp_to_zone(radars[0].pos, 2),
+                                      stop_at=900)
+        return state.move_towards(collector, state.clamp_to_zone(state.safe_center, 2))
+
+    def radar(self, state, radar):
+        """Phase 1 : le Radar accompagne le Collecteur (on voit qui vient le
+        chercher). Phase 2 : il suit le Destructeur, pour lui donner la vision."""
+        collectors = state.my_robots_of_type("C")
+        if state.phase == 1 and collectors:
+            target = state.clamp_to_zone(collectors[0].pos, 2)
+            return state.move_towards(radar, target, stop_at=800)
         killers = state.my_robots_of_type("K")
         if killers:
             target = state.clamp_to_zone(killers[0].pos, 2)

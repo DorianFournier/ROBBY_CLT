@@ -1,6 +1,6 @@
 # ROBBY — client
 
-Votre mission : écrire la **stratégie** d'une équipe de 3 robots qui affronte
+Votre mission : écrire la **stratégie** d'une équipe de 4 robots qui affronte
 les autres équipes sur le serveur ROBBY.
 
 Vous ne modifiez **que le dossier `strategy/`**. Votre code va dans
@@ -55,11 +55,12 @@ uv run pytest
   `angle = math.degrees(math.atan2(bx - ax, -(by - ay))) % 360`, ou plus
   simplement `robot.angle_to(B)`.
 - Chaque équipe a une **base** (un disque de rayon 700) au milieu d'un côté
-  de l'arène, et trois robots. Les robots sont des disques de rayon 300.
+  de l'arène, et quatre robots. Les robots sont des disques de rayon 300.
 
 | Type | Nom | Vitesse max par tour | Capacité |
 |---|---|---|---|
-| `R` | Radar | 1500 | Voit les ennemis à moins de 3000. Seul robot pouvant ramasser une batterie. |
+| `R` | Radar | 1500 | Voit les ennemis à moins de 3000 : les yeux de l'équipe. |
+| `C` | Collecteur | 1000 | Seul robot pouvant ramasser et porter une batterie. Le plus lent : protégez-le ! |
 | `D` | Défenseur | 2000 | Pose un bouclier : une part de tarte de 90° et de rayon 1500. |
 | `K` | Destructeur | 3000 | Tire un rayon de 3000 qui touche le premier ennemi rencontré. |
 
@@ -140,22 +141,31 @@ de l'état du début du tour :
 
 1. les tirs sont résolus : les boucliers touchés s'usent, les robots touchés
    sont détruits (deux Destructeurs peuvent s'éliminer mutuellement) ;
-2. les robots survivants qui roulent avancent ;
+2. les robots survivants qui roulent avancent (puis, en phase 2, la
+   déchèterie : dépôts, puis prises de prisonniers) ;
 3. les boucliers sont posés ;
 4. la tempête détruit les robots restés dehors.
 
 ### Phase 1 — Course aux batteries (60 tours)
 
-Des **batteries** sont posées dans l'arène, chacune à égale distance des bases
-de deux équipes voisines : une au centre à 2 équipes, deux à 3 équipes, quatre
-à 4 équipes. Un Radar ramasse une batterie en passant à moins de 500 unités,
-et n'en porte qu'une à la fois.
+Des **batteries** sont posées dans l'arène :
+- une **grosse batterie au centre**, qui rapporte **1000 points** : le gros
+  lot, mais là où tout le monde se croise ;
+- des **petites batteries** (**500 points**), chacune à égale distance des
+  bases de deux équipes voisines : deux à 2 équipes (au-dessus et au-dessous
+  du centre), trois à 3 équipes, quatre à 4 équipes.
 
-**Chaque batterie ramenée dans votre base rapporte 500 points.** Elle
+À 3 équipes, les bases sont sur un cercle autour du centre, espacées de 120° :
+chaque équipe est exactement dans la même situation. Un Collecteur ramasse
+une batterie en passant à moins de 500 unités, et n'en porte qu'une à la fois.
+
+**Chaque batterie ramenée dans votre base rapporte ses points.** Elle
 disparaît, puis **réapparaît à sa place 3 tours plus tard** : faites autant
-d'allers-retours que possible pendant les 60 tours ! Si le porteur est
-détruit, la batterie tombe là où il est mort. Un robot détruit pendant cette
-phase réapparaît près de sa base 3 tours plus tard.
+d'allers-retours que possible pendant les 60 tours ! Sûr mais peu payant, ou
+risqué mais rentable : à vous de choisir (`state.best_battery(robot)` calcule
+la batterie la plus rentable). Si le porteur est détruit, la batterie tombe là
+où il est mort. Un robot détruit pendant cette phase réapparaît près de sa
+base 3 tours plus tard.
 
 ### Phase 2 — Match à mort (100 tours au maximum)
 
@@ -190,7 +200,7 @@ nouveau centre. Regardez donc où le prochain cercle est annoncé
 
 **Un robot dont le centre est hors du cercle à la fin d'un tour est détruit.**
 Le cercle est rond : les coins tombent avant le milieu des bords. La tempête
-avance moins vite que le Radar, mais il n'avance que de 1500 par tour : partez
+avance moins vite que le Collecteur, mais il n'avance que de 1000 par tour : partez
 à temps ! Et attention à l'élan : un robot qui tire en roulant peut finir
 dehors. `state.keep_safe(robot, commande)` remplace la commande par un écart
 si c'est le cas.
@@ -208,6 +218,30 @@ Ce que vous savez de la tempête (`state.zone`, envoyé à chaque tour) :
 
 Le plus simple est d'utiliser les outils de `state` (voir plus bas).
 
+**La déchèterie.** En phase 2, votre Collecteur n'a plus de batteries à
+ramasser : il ramasse... les ennemis !
+
+- Un Collecteur qui finit son tour **au contact** (700 unités, centre à
+  centre) d'un robot ennemi **à l'arrêt** (vitesse 0 : arrêté, bloqué ou
+  pénalisé) l'**attrape**. Un robot qui roule ne peut pas être attrapé.
+  Deux Collecteurs sur le même robot : le plus proche l'emporte.
+- Le prisonnier est **inactif** : ses commandes sont ignorées (sans
+  pénalité), il ne bloque personne, les tirs le traversent (on ne peut ni
+  l'achever ni le délivrer en tirant), et son Radar ne voit plus rien.
+- Un Collecteur chargé roule **à 600 au plus**. Il ne porte qu'un
+  prisonnier à la fois.
+- S'il entre dans la **déchèterie**, un disque de rayon 700 **au centre de
+  la zone sûre** (il suit la tempête), le prisonnier est **détruit** et
+  rapporte **une fois et demie** sa valeur (voir le score).
+- Si le Collecteur est détruit (tir, tempête), son prisonnier est
+  **libéré**, là où il était.
+
+Conséquence : en phase 2, **un robot immobile est une proie**. Un Défenseur
+dont le bouclier fait face au Collecteur l'arrête (on ne traverse pas un
+bouclier ennemi). Outils : `state.dump_center`, `state.in_dump(point)`,
+`state.grab_targets(c)`, `state.captives`, et `robot.captive_id` (prisonnier
+porté par ce Collecteur), `robot.captured_by` (Collecteur qui porte ce robot).
+
 ### Score
 
 **L'équipe qui a le meilleur score gagne.** Être la dernière équipe en vie
@@ -218,14 +252,19 @@ détruits.
 
 | Ce qui rapporte | Points |
 |---|---|
-| Batterie ramenée à votre base | 500 chaque fois |
+| Batterie ramenée à votre base | 500 (petite) ou 1000 (grosse, au centre) chaque fois |
 | Destructeur `K` ennemi détruit | 250 |
 | Défenseur `D` ennemi détruit | 500 |
+| Collecteur `C` ennemi détruit | 500 |
 | Radar `R` ennemi détruit | 750 |
-| Radar ennemi portant une batterie détruit | 1000 |
+| Collecteur ennemi portant une batterie détruit | 1000 |
+| Ennemi déposé à la déchèterie (phase 2) | `K` 375, `D` 750, `C` 750, `R` 1125 |
 | Chacun de vos robots encore en vie à la fin de la partie | 300 |
 
-Un robot détruit par la tempête ne rapporte rien à personne.
+Deux équipes touchent le même robot au même tour : le tireur le plus
+proche marque ; à égalité parfaite, les points sont partagés.
+Un robot détruit par la tempête ne rapporte rien à personne. Un robot
+prisonnier à la fin de la partie ne compte pas comme survivant.
 
 ### Pénalités
 
@@ -256,18 +295,19 @@ partie puisse être rejouée à l'identique. Les méthodes `on_game_start`,
 
 ### Choisir le placement de départ
 
-Vos trois robots commencent en **triangle** devant votre base. Vues depuis la
-base, face au centre de l'arène, les trois places sont **`"avant"`** (la
-pointe, la plus proche du centre), **`"gauche"`** et **`"droite"`** (en retrait,
-de part et d'autre). C'est vous qui choisissez quel robot va où, avec
+Trois de vos robots commencent en **triangle** devant votre base, le
+quatrième **sur la base**. Vues depuis la base, face au centre de l'arène, les
+quatre places sont **`"avant"`** (la pointe, la plus proche du centre),
+**`"gauche"`** et **`"droite"`** (en retrait, de part et d'autre) et
+**`"milieu"`** (sur la base). C'est vous qui choisissez quel robot va où, avec
 l'attribut `placement` de votre classe :
 
 ```python
 class MyStrategy(Strategy):
-    placement = {"R": "gauche", "D": "avant", "K": "droite"}
+    placement = {"R": "gauche", "C": "milieu", "D": "avant", "K": "droite"}
 ```
 
-Par défaut : `{"R": "avant", "D": "droite", "K": "gauche"}`. Un robot détruit
+Par défaut : `{"R": "avant", "C": "milieu", "D": "droite", "K": "gauche"}`. Un robot détruit
 réapparaît à sa place. Si le placement est invalide (deux robots sur la même
 place, un robot oublié...), le serveur garde le placement par défaut et le
 client affiche pourquoi.
@@ -277,8 +317,11 @@ client affiche pourquoi.
 | Attribut / méthode | Description |
 |---|---|
 | `state.turn`, `state.phase`, `state.phase_turn` | numéro du tour, de la phase (1 ou 2), du tour dans la phase |
-| `state.my_robots`, `state.my_robots_of_type("K")` | vos robots vivants |
-| `state.enemies` | ennemis vivants **visibles** |
+| `state.my_robots`, `state.my_robots_of_type("K")` | vos robots vivants (et libres : pas prisonniers) |
+| `state.enemies` | ennemis vivants (et libres) **visibles** |
+| `state.dump_center`, `state.in_dump(point)` | déchèterie (phase 2, `None` en phase 1) : son centre, ce point est-il dedans ? |
+| `state.grab_targets(c)` | ennemis à l'arrêt, au contact, que ce Collecteur attraperait |
+| `state.captives` | prisonniers visibles (les vôtres et ceux de vos Collecteurs) |
 | `state.scores`, `state.my_score`, `state.lead` | scores de toutes les équipes (publics), le vôtre, et votre avance sur la meilleure équipe adverse (négative si vous êtes en retard) |
 | `state.elements` | les batteries : `.pos`, `.points` (ce que rapporte sa capture), `.is_free` (posée au sol, à prendre), `.carried_by_id`, `.present` (`False` pendant qu'une batterie capturée réapparaît) |
 | `state.nearest_battery(robot)` | batterie libre la plus proche, ou `None` |
@@ -291,7 +334,8 @@ client affiche pourquoi.
 | `state.move_away(robot, menace)` | commande MOVE pour s'éloigner |
 | `state.stop(robot)`, `state.predict(robot, tours)` | commande d'arrêt (None si déjà arrêté) ; position future si le robot garde son cap |
 | `state.safe_to_coast(robot)`, `state.keep_safe(robot, commande)` | sur sa lancée, reste-t-il hors de la tempête ? ; garder un tir ou un bouclier seulement si c'est le cas |
-| `state.distance(a, b)`, `state.nearest(robot, robots)` | distance à vol d'oiseau, robot le plus proche |
+| `state.distance(a, b)`, `state.nearest(robot, robots)` | distance à vol d'oiseau, robot (ou point, ou batterie) le plus proche ; à égalité, celui de droite |
+| `state.by_distance(robot, liste)`, `state.side(point)` | liste du plus proche au plus loin (égalités : la droite d'abord) ; angle du point vu de votre base, 0 = tout droit vers le centre, sens horaire |
 | `state.max_speed(robot)`, `state.destination(robot, angle, speed)` | vitesse maximale ; point d'arrivée si rien ne gêne |
 | `state.targets_in_range(k)` | ennemis visibles qu'un tir visé sur eux toucherait vraiment |
 | `state.shielded_targets(k)` | ennemis à portée mais derrière un bouclier : tirer dessus l'use |
@@ -307,8 +351,9 @@ client affiche pourquoi.
 
 Chaque `Robot` a les attributs `id`, `team_id`, `type`, `x`, `y`, `pos`,
 `alive`, `heading`, `speed`, `shield_direction`, `shield_hp`,
-`shield_cooldown`, `carrying_element`, `penalty`, ainsi que `can_act` (vivant
-et sans pénalité), `moving`, `shield_ready`, `distance_to(...)` et
+`shield_cooldown`, `carrying_element`, `penalty`, `captive_id` (prisonnier
+porté, Collecteur), `captured_by` (Collecteur qui le porte), ainsi que
+`captive` (prisonnier ?), `can_act` (vivant, libre et sans pénalité), `moving`, `shield_ready`, `distance_to(...)` et
 `angle_to(...)`.
 
 Avant chaque envoi, le client vérifie les erreurs évidentes et les affiche en
@@ -323,8 +368,8 @@ au plus fort. Le but est de les battre l'un après l'autre.
 | Option | Bot | Comportement |
 |---|---|---|
 | `bot1` | `RandomBot` | Joue au hasard, mais sans faute de règle (il fuit la tempête). |
-| `bot2` | `RusherBot` | « Fonceur » : le Radar va droit sur la batterie, le Destructeur tire sur l'ennemi le plus proche (ou use son bouclier) ou lui fonce dessus, le Défenseur suit le Radar et tourne son bouclier vers l'ennemi. Aucune prudence, aucune mémoire. |
-| `bot3` | `TacticianBot` | « Tacticien » : il se souvient des ennemis vus, son Radar se cache derrière le Défenseur quand un Destructeur ennemi menace. En phase 2, il tient le centre du prochain cercle (celui qui attend voit l'autre arriver en premier), avance derrière son Défenseur, contourne les boucliers ennemis pour tirer de côté, ou les use. |
+| `bot2` | `RusherBot` | « Fonceur » : le Collecteur va droit sur la batterie (le Radar l'escorte) et, en phase 2, sur l'ennemi à l'arrêt le plus proche, le Destructeur tire sur l'ennemi le plus proche (ou use son bouclier) ou lui fonce dessus, le Défenseur suit le Radar et tourne son bouclier vers l'ennemi. Aucune prudence, aucune mémoire. |
+| `bot3` | `TacticianBot` | « Tacticien » : il se souvient des ennemis vus, son Collecteur se cache derrière le Défenseur quand un Destructeur ennemi menace, et le Radar l'escorte pour le voir venir. En phase 2, il tient le centre du prochain cercle (celui qui attend voit l'autre arriver en premier), avance derrière son Défenseur, contourne les boucliers ennemis pour tirer de côté, ou les use. |
 | `bot4` | `SimulatorBot` | « Simulateur » : il essaie des centaines de plans dans un simulateur de tour et garde le meilleur (voir plus bas). |
 
 Mesuré sur 150 parties par duel (côtés alternés, une commande sur dix perdue
@@ -333,9 +378,9 @@ nul 0,5, défaite 0 :
 
 | Duel | Score du premier |
 |---|---|
-| bot3 contre bot2 | 0,64 |
-| bot4 contre bot3 | 0,87 |
-| bot4 contre bot2 | 0,83 |
+| bot3 contre bot2 | 0,59 |
+| bot4 contre bot3 | 0,75 |
+| bot4 contre bot2 | 0,72 |
 
 Lire leur code (`bots/level2_rusher.py`, `bots/level3_tactician.py`...) est une
 bonne source d'idées... mais pour les battre, il faudra faire mieux !

@@ -10,14 +10,14 @@ class Strategy:
     stocker des informations d'un tour sur l'autre dans `self`
     (dernières positions ennemies connues, plan en cours...).
 
-    `placement` : où chaque robot commence la partie. Les trois places sont
-    en triangle devant votre base, vues depuis la base face au centre :
-    "avant" (la pointe, la plus proche du centre), "gauche" et "droite" (en
-    retrait). Un robot détruit réapparaît à sa place. Exemple :
-        placement = {"R": "gauche", "D": "avant", "K": "droite"}
+    `placement` : où chaque robot commence la partie. Vues depuis votre base
+    face au centre, les quatre places sont "gauche", "milieu" (sur la base)
+    et "droite" sur une ligne, et "avant" devant. Un robot détruit
+    réapparaît à sa place. Exemple :
+        placement = {"R": "gauche", "C": "milieu", "D": "avant", "K": "droite"}
     """
 
-    placement = {"R": "avant", "D": "droite", "K": "gauche"}
+    placement = {"R": "avant", "C": "milieu", "D": "droite", "K": "gauche"}
 
     def on_game_start(self, team_id: int, config: dict) -> None:
         """Appelée une fois au début de la partie."""

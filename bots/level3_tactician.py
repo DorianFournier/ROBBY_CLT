@@ -7,8 +7,11 @@
 #     Destructeur, Défenseur) ; si un bouclier protège l'ennemi, va se placer
 #     sur le côté pour tirer au tour suivant ; sinon s'approche juste à portée
 #     de la menace la plus proche, ou escorte son Radar.
-#   - Radar : va chercher la batterie s'il n'est pas menacé, recule derrière
-#     son Défenseur sinon ; en phase 2, reste groupé, au centre de la zone.
+#   - Collecteur : va chercher la batterie la plus rentable s'il n'est pas
+#     menacé, recule derrière son Défenseur sinon, puis la ramène.
+#   - Radar : accompagne le Collecteur en phase 1 (il voit qui approche) ;
+#     en phase 2, reste groupé, au centre de la zone, et mène la chasse.
+#   - Défenseur : protège le Collecteur en phase 1, le Radar en phase 2.
 
 from robby import GameState, shield
 from robby.geometry import angle_diff, direction
@@ -16,7 +19,7 @@ from robby.strategy import Strategy
 
 MEMORY = 6          # tours pendant lesquels on se souvient d'un ennemi
 DANGER = 4500       # un K ennemi plus près que ça du Radar : menace
-PRIORITY = {"R": 1, "K": 2, "D": 3}
+PRIORITY = {"C": 1, "R": 1, "K": 2, "D": 3}
 
 
 class TacticianBot(Strategy):
@@ -48,6 +51,8 @@ class TacticianBot(Strategy):
 
         radars = state.my_robots_of_type("R")
         self.radar = radars[0] if radars else None
+        collectors = state.my_robots_of_type("C")
+        self.collector = collectors[0] if collectors else None
         commands = []
         for robot in state.my_robots:
             if not robot.can_act:
@@ -57,6 +62,8 @@ class TacticianBot(Strategy):
                 command = state.move_towards(robot, escape)
             elif robot.type == "R":
                 command = self.play_radar(state, robot)
+            elif robot.type == "C":
+                command = self.play_collector(state, robot)
             elif robot.type == "K":
                 command = self.play_destructor(state, robot)
             else:
@@ -66,11 +73,11 @@ class TacticianBot(Strategy):
                 commands.append(command)
         return commands
 
-    def nearest_threat(self, state, origin, types="RDK"):
+    def nearest_threat(self, state, origin, types="RCDK"):
         candidates = [p for t, p in self.threats if t in types]
         if not candidates:
             return None
-        return min(candidates, key=lambda p: state.distance(origin, p))
+        return state.nearest(origin, candidates)
 
     def hunt_point(self, state):
         """Phase 2 : tenir le centre du prochain cercle. Avec le brouillard de
@@ -88,31 +95,71 @@ class TacticianBot(Strategy):
 
     # ------------------------------------------------------------------
 
-    def play_radar(self, state, radar):
-        # Un K ennemi qui campe reste dangereux même s'il n'est plus visible :
-        # on se souvient de sa dernière position sans limite de temps.
-        danger = self.nearest_threat(state, radar, "K")
+    def danger_for(self, state, robot):
+        """K ennemi menaçant ce robot (ou None). Un K qui campe reste
+        dangereux même invisible : en phase 2, on se souvient de sa
+        dernière position sans limite de temps."""
+        danger = self.nearest_threat(state, robot, "K")
         if self.killers and state.phase == 2:
-            remembered = min(self.killers.values(),
-                             key=lambda p: state.distance(radar, p))
-            if danger is None or state.distance(radar, remembered) < \
-                    state.distance(radar, danger):
+            remembered = state.nearest(robot, list(self.killers.values()))
+            if danger is None or state.distance(robot, remembered) < \
+                    state.distance(robot, danger):
                 danger = remembered
-        threatened = danger and state.distance(radar, danger) < DANGER
-        if state.phase == 1 and radar.carrying_element:
-            return state.move_towards(radar, state.my_base)
-        if threatened:
-            defenders = state.my_robots_of_type("D")
-            if defenders:   # se cacher derrière le Défenseur (qui avance en phase 2)
-                d = defenders[0]
-                away = d.angle_to(danger)
-                dx, dy = direction((away + 180) % 360) if away is not None else (0, 0)
-                hide = state.clamp_to_zone((d.x + dx * 700, d.y + dy * 700), 2)
-                return state.move_towards(radar, hide)
-            return state.move_away(radar, danger)
-        battery = state.best_battery(radar) if state.phase == 1 else None
-        if battery:
-            return state.move_towards(radar, battery.pos)
+        return danger if danger and state.distance(robot, danger) < DANGER else None
+
+    def hide(self, state, robot, danger):
+        """Se cacher derrière le Défenseur, sinon s'éloigner de la menace."""
+        defenders = state.my_robots_of_type("D")
+        if defenders:
+            d = defenders[0]
+            away = d.angle_to(danger)
+            dx, dy = direction((away + 180) % 360) if away is not None else (0, 0)
+            spot = state.clamp_to_zone((d.x + dx * 700, d.y + dy * 700), 2)
+            return state.move_towards(robot, spot)
+        return state.move_away(robot, danger)
+
+    def play_collector(self, state, c):
+        if state.phase == 1:
+            if c.carrying_element:
+                return state.move_towards(c, state.my_base)
+            danger = self.danger_for(state, c)
+            if danger:
+                return self.hide(state, c, danger)
+            battery = state.best_battery(c)
+            if battery:
+                return state.move_towards(c, battery.pos)
+        if state.dump:      # phase 2 : la déchèterie
+            if c.captive_id is not None:
+                return state.move_towards(c, state.dump_center)
+            danger = self.danger_for(state, c)
+            if danger:
+                return self.hide(state, c, danger)
+            prey = self.prey_for(state, c)
+            if prey is not None:
+                return state.move_towards(c, prey)
+        # plus rien à ramasser : il reste avec le Radar
+        target = self.radar.pos if self.radar else self.home(state)
+        return state.move_towards(c, state.clamp_to_zone(target, 2), stop_at=900)
+
+    def prey_for(self, state, c):
+        """Ennemi à l'arrêt que le Collecteur peut aller attraper : proche,
+        et sans Destructeur ennemi à portée de lui."""
+        stopped = [e for e in state.enemies if e.speed == 0 and e.captive_id is None
+                   and c.distance_to(e) <= 2500]
+        reach = state.config["destructor_range"] + 1000
+        safe = [e for e in stopped
+                if not any(k.type == "K" and k.distance_to(e) <= reach
+                           for k in state.enemies)]
+        return state.nearest(c, safe) if safe else None
+
+    def play_radar(self, state, radar):
+        danger = self.danger_for(state, radar)
+        if danger:
+            return self.hide(state, radar, danger)
+        if state.phase == 1 and self.collector is not None:
+            # il accompagne le Collecteur : on voit qui vient le chercher
+            target = state.clamp_to_zone(self.collector.pos, 2)
+            return state.move_towards(radar, target, stop_at=1200)
         if state.phase == 2:   # le Radar mène la chasse, les autres l'escortent
             if self.last_known is not None and state.distance(radar,
                                                               self.last_known) < 1000:
@@ -127,10 +174,13 @@ class TacticianBot(Strategy):
         known = [p for t, p in self.threats if t == "K"] + list(self.killers.values())
         if not known:
             return None
-        return min(known, key=lambda p: state.distance(origin, p))
+        return state.nearest(origin, known)
 
     def play_defender(self, state, d):
-        protect = self.radar.pos if self.radar else d.pos
+        # phase 1 : il protège le Collecteur (et sa batterie), puis le Radar
+        garde = (self.collector if state.phase == 1 and self.collector
+                 else self.radar)
+        protect = garde.pos if garde else d.pos
         if state.phase == 2:
             threat = self.killer_threat(state, protect) or \
                 self.nearest_threat(state, protect)
@@ -138,7 +188,7 @@ class TacticianBot(Strategy):
             threat = self.nearest_threat(state, protect, "K") or \
                 self.nearest_threat(state, protect)
         if threat is None:
-            target = self.radar or self.home(state)
+            target = garde or self.home(state)
             return state.move_towards(d, state.clamp_to_zone(
                 target.pos if hasattr(target, "pos") else target, 2), stop_at=800)
         wanted = d.angle_to(threat) if d.shield_ready else None
@@ -154,8 +204,8 @@ class TacticianBot(Strategy):
             return state.move_towards(d, state.clamp_to_zone(threat, 2),
                                       speed=state.max_speed(self.radar),
                                       stop_at=2200)
-        # se placer à 700 du Radar, du côté de la menace (le bouclier suit)
-        heading = state.aim(self.radar, threat) if self.radar else None
+        # se placer à 700 du robot garde, du côté de la menace (le bouclier suit)
+        heading = state.aim(garde, threat) if garde else None
         if heading is None:
             return None
         dx, dy = direction(heading)
@@ -165,17 +215,17 @@ class TacticianBot(Strategy):
     def play_destructor(self, state, k):
         targets = state.targets_in_range(k)
         if targets:
-            best = min(targets, key=lambda e: (not e.carrying_element,
-                                               PRIORITY[e.type], state.distance(k, e)))
+            best = state.by_distance(k, targets, key=lambda e: (
+                not e.carrying_element, PRIORITY[e.type]))[0]
             return state.shoot_at(k, best)
         # Ennemi à portée mais derrière un bouclier : tirer quand même l'use, et
         # il se brise au bout de quelques tirs. Sinon, contourner le bouclier
         # d'un ennemi visible plus loin pour pouvoir tirer au tour suivant.
         shielded = state.shielded_targets(k)
         if shielded:
-            return state.shoot_at(k, min(shielded, key=lambda e: state.distance(k, e)))
-        for enemy in sorted(state.enemies, key=lambda e: (PRIORITY[e.type],
-                                                          state.distance(k, e))):
+            return state.shoot_at(k, state.nearest(k, shielded))
+        for enemy in state.by_distance(k, state.enemies,
+                                       key=lambda e: PRIORITY[e.type]):
             spot = state.firing_spot(k, enemy)
             if spot:
                 return state.move_towards(k, spot)

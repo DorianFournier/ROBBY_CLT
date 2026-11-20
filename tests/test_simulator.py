@@ -42,11 +42,14 @@ def test_shots_first_enemy_and_shields():
 
 
 def test_battery_pickup_and_capture():
-    res = run([robot(11, 1, "R", 6800, 7500)], {1: [move(11, angle=90, speed=1000)]})
-    assert res.carrier == 11 and res.robot(11).carrying_element
-    res = run([robot(11, 1, "R", 1500, 7500, carrying=True)],
-              {1: [move(11, angle=270, speed=600)]}, carried_by=11)
+    res = run([robot(14, 1, "C", 6800, 7500)], {1: [move(14, angle=90, speed=1000)]})
+    assert res.carrier == 14 and res.robot(14).carrying_element
+    res = run([robot(14, 1, "C", 1500, 7500, carrying=True)],
+              {1: [move(14, angle=270, speed=600)]}, carried_by=14)
     assert res.captured_by == 1
+    # le Radar ne ramasse pas
+    res = run([robot(11, 1, "R", 6800, 7500)], {1: [move(11, angle=90, speed=1000)]})
+    assert res.carrier is None and not res.robot(11).carrying_element
 
 
 def test_zone_kills_and_invalid_commands_are_ignored():
@@ -75,11 +78,12 @@ def play(state, bot=None):
 
 
 def test_bot4_picks_up_the_battery():
-    commands = play(make_state([robot(11, 1, "R", 6600, 7500),
+    commands = play(make_state([robot(14, 1, "C", 6600, 7500),
+                                     robot(11, 1, "R", 6000, 7500),
                                      robot(12, 1, "D", 5000, 7000),
                                      robot(13, 1, "K", 5000, 8000)]))
-    assert commands[11]["action"] == "MOVE"
-    assert commands[11]["angle"] == pytest.approx(90, abs=30)
+    assert commands[14]["action"] == "MOVE"
+    assert commands[14]["angle"] == pytest.approx(90, abs=30)
 
 
 def test_bot4_shoots_an_exposed_enemy_radar():
@@ -133,3 +137,51 @@ def test_simulated_shield_wears_breaks_and_cannot_be_raised():
     d = res.robot(22)
     assert res.shield_breaks == [22] and d.shield_direction is None
     assert d.shield_cooldown == 4 and res.robot(21).alive
+
+
+# ---------------------------------------------------------------- déchèterie
+
+ZONE2 = {"center": [7500, 7500], "radius": 6500, "forecast": [6500, 6500],
+         "state": "pause", "target": 5000, "shrink_turn": 99, "end_turn": 105}
+DUMP = {"x": 7500, "y": 7500, "radius": 700}
+
+
+def test_a_collector_grabs_a_stopped_enemy_and_carries_it_slowly():
+    robots = [robot(14, 1, "C", 4000, 5000), robot(23, 2, "K", 5000, 5000)]
+    res = run(robots, {1: [move(14, angle=90, speed=1000)]}, phase=2, zone=ZONE2,
+              dump=DUMP)
+    assert res.grabs == [(14, 23)]
+    assert res.robot(14).captive_id == 23 and res.robot(23).captured_by == 14
+    assert [r.id for r in res.alive()] == [14]          # le prisonnier ne compte plus
+    # porté : le Collecteur roule à 600 au plus
+    robots = [robot(14, 1, "C", 4000, 5000, captive_id=23),
+              robot(23, 2, "K", 4000, 5000, captured_by=14)]
+    res = run(robots, {1: [move(14, angle=90, speed=1000)],
+                       2: [move(23, angle=0, speed=3000)]},
+              phase=2, zone=ZONE2, dump=DUMP)
+    assert res.robot(14).x == pytest.approx(4600)
+    assert res.robot(23).pos == res.robot(14).pos       # commande ignorée
+
+
+def test_no_grab_in_phase_1_nor_on_a_moving_enemy():
+    robots = [robot(14, 1, "C", 4000, 5000), robot(23, 2, "K", 5000, 5000)]
+    assert run(robots, {1: [move(14, angle=90, speed=1000)]}).grabs == []
+    res = run(robots, {1: [move(14, angle=90, speed=1000)],
+                       2: [move(23, angle=90, speed=1500)]},   # il s'enfuit
+              phase=2, zone=ZONE2, dump=DUMP)
+    assert res.grabs == []
+
+
+def test_dump_destroys_the_captive_and_a_dead_carrier_frees_it():
+    robots = [robot(14, 1, "C", 7500, 6600, captive_id=21),
+              robot(21, 2, "R", 7500, 6600, captured_by=14)]
+    res = run(robots, {1: [move(14, angle=180, speed=600)]}, phase=2, zone=ZONE2,
+              dump=DUMP)
+    assert res.dumps == [(14, 21, 1125)] and res.killers == {21: 1}
+    assert not res.robot(21).alive and res.robot(14).captive_id is None
+    # le porteur est abattu : le prisonnier est libéré, là où il était
+    robots += [robot(33, 3, "K", 7500, 4000)]
+    res = run(robots, {3: [shoot(33, angle=180)]}, team_id=3, phase=2, zone=ZONE2,
+              dump=DUMP)
+    assert res.deaths == [14] and res.robot(21).alive
+    assert res.robot(21).captured_by is None
