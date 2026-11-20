@@ -146,16 +146,24 @@ de l'état du début du tour :
 
 ### Phase 1 — Course aux batteries (60 tours)
 
-Des **batteries** sont posées dans l'arène, chacune à égale distance des bases
-de deux équipes voisines : une au centre à 2 équipes, deux à 3 équipes, quatre
-à 4 équipes. Un Radar ramasse une batterie en passant à moins de 500 unités,
-et n'en porte qu'une à la fois.
+Des **batteries** sont posées dans l'arène :
+- une **grosse batterie au centre**, qui rapporte **1000 points** : le gros
+  lot, mais là où tout le monde se croise ;
+- des **petites batteries** (**500 points**), chacune à égale distance des
+  bases de deux équipes voisines : deux à 2 équipes (au-dessus et au-dessous
+  du centre), trois à 3 équipes, quatre à 4 équipes.
 
-**Chaque batterie ramenée dans votre base rapporte 500 points.** Elle
+À 3 équipes, les bases sont sur un cercle autour du centre, espacées de 120° :
+chaque équipe est exactement dans la même situation. Un Radar ramasse une
+batterie en passant à moins de 500 unités, et n'en porte qu'une à la fois.
+
+**Chaque batterie ramenée dans votre base rapporte ses points.** Elle
 disparaît, puis **réapparaît à sa place 3 tours plus tard** : faites autant
-d'allers-retours que possible pendant les 60 tours ! Si le porteur est
-détruit, la batterie tombe là où il est mort. Un robot détruit pendant cette
-phase réapparaît près de sa base 3 tours plus tard.
+d'allers-retours que possible pendant les 60 tours ! Sûr mais peu payant, ou
+risqué mais rentable : à vous de choisir (`state.best_battery(robot)` calcule
+la batterie la plus rentable). Si le porteur est détruit, la batterie tombe là
+où il est mort. Un robot détruit pendant cette phase réapparaît près de sa
+base 3 tours plus tard.
 
 ### Phase 2 — Match à mort (100 tours au maximum)
 
@@ -218,7 +226,7 @@ détruits.
 
 | Ce qui rapporte | Points |
 |---|---|
-| Batterie ramenée à votre base | 500 chaque fois |
+| Batterie ramenée à votre base | 500 (petite) ou 1000 (grosse, au centre) chaque fois |
 | Destructeur `K` ennemi détruit | 250 |
 | Défenseur `D` ennemi détruit | 500 |
 | Radar `R` ennemi détruit | 750 |
@@ -333,9 +341,9 @@ nul 0,5, défaite 0 :
 
 | Duel | Score du premier |
 |---|---|
-| bot3 contre bot2 | 0,64 |
-| bot4 contre bot3 | 0,87 |
-| bot4 contre bot2 | 0,83 |
+| bot3 contre bot2 | 0,59 |
+| bot4 contre bot3 | 0,75 |
+| bot4 contre bot2 | 0,72 |
 
 Lire leur code (`bots/level2_rusher.py`, `bots/level3_tactician.py`...) est une
 bonne source d'idées... mais pour les battre, il faudra faire mieux !
