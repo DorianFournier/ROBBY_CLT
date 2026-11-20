@@ -261,6 +261,8 @@ détruits.
 | Ennemi déposé à la déchèterie (phase 2) | `K` 375, `D` 750, `C` 750, `R` 1125 |
 | Chacun de vos robots encore en vie à la fin de la partie | 300 |
 
+Deux équipes touchent le même robot au même tour : le tireur le plus
+proche marque ; à égalité parfaite, les points sont partagés.
 Un robot détruit par la tempête ne rapporte rien à personne. Un robot
 prisonnier à la fin de la partie ne compte pas comme survivant.
 
@@ -332,7 +334,8 @@ client affiche pourquoi.
 | `state.move_away(robot, menace)` | commande MOVE pour s'éloigner |
 | `state.stop(robot)`, `state.predict(robot, tours)` | commande d'arrêt (None si déjà arrêté) ; position future si le robot garde son cap |
 | `state.safe_to_coast(robot)`, `state.keep_safe(robot, commande)` | sur sa lancée, reste-t-il hors de la tempête ? ; garder un tir ou un bouclier seulement si c'est le cas |
-| `state.distance(a, b)`, `state.nearest(robot, robots)` | distance à vol d'oiseau, robot le plus proche |
+| `state.distance(a, b)`, `state.nearest(robot, robots)` | distance à vol d'oiseau, robot (ou point, ou batterie) le plus proche ; à égalité, celui de droite |
+| `state.by_distance(robot, liste)`, `state.side(point)` | liste du plus proche au plus loin (égalités : la droite d'abord) ; angle du point vu de votre base, 0 = tout droit vers le centre, sens horaire |
 | `state.max_speed(robot)`, `state.destination(robot, angle, speed)` | vitesse maximale ; point d'arrivée si rien ne gêne |
 | `state.targets_in_range(k)` | ennemis visibles qu'un tir visé sur eux toucherait vraiment |
 | `state.shielded_targets(k)` | ennemis à portée mais derrière un bouclier : tirer dessus l'use |

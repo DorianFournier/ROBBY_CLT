@@ -284,16 +284,24 @@ class TurnSimulator:
 
         result = SimResult(robots=robots)
 
-        # 1. tirs (positions du début de tour), puis morts
+        # 1. tirs (positions du début de tour), puis morts. Plusieurs équipes
+        #    touchent le même robot : le tireur le plus proche marque ; à
+        #    égalité parfaite, les points sont partagés (équipes en tuple)
+        hits = {}
         for shooter, angle in shots:
             hit, shield = self.shot_outcome(robots, shooter, angle)
             result.shots.append((shooter.id, hit.id if hit else None,
                                  shield is not None))
-            if hit is not None and hit.id not in result.killers:
-                result.killers[hit.id] = shooter.team_id
+            if hit is not None:
+                t = ray_circle(shooter.pos, angle, self.range, hit.pos, self.radius)
+                hits.setdefault(hit.id, []).append((t or 0.0, shooter.team_id))
             if shield is not None:   # le bouclier s'use
                 result.shield_damage[shield.id] = result.shield_damage.get(shield.id,
                                                                            0) + 1
+        for hid, list_ in hits.items():
+            best = min(d for d, _ in list_)
+            teams = sorted({t for d, t in list_ if d - best < 1e-6})
+            result.killers[hid] = teams[0] if len(teams) == 1 else tuple(teams)
         for did, damage in result.shield_damage.items():
             d = robots[did]
             d.shield_hp -= damage

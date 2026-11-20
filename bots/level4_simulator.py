@@ -31,6 +31,10 @@ from robby.strategy import Strategy
 
 MEMORY = 3            # tours pendant lesquels un ennemi disparu est supposé là
 MAX_EVALS = 260       # plans évalués au plus par tour
+# Gain minimal pour changer de plan : deux coups presque équivalents (à
+# moins d'un point près) ne départagent pas les équipes selon leur place
+# (positions arrondies, arène carrée) : on garde le premier essayé.
+GAIN_MIN = 1.0
 PASSES = 2
 
 OWN_VALUE = {"R": 1400, "C": 1000, "K": 1000, "D": 700}   # un robot à nous
@@ -79,6 +83,7 @@ class SimulatorBot(Strategy):
         self.scout = TacticianBot()   # plan de départ + point de chasse
         self.memory = {}                  # id -> (team, type, pos, tour, bouclier)
         self.evals = 0
+        self.gain_min = GAIN_MIN
 
     def on_game_start(self, team_id, config):
         self.scout.on_game_start(team_id, config)
@@ -134,7 +139,7 @@ class SimulatorBot(Strategy):
                         continue
                     trial = {**plan, robot.id: cand}
                     value = self.score(trial)
-                    if value > best + 1e-6:
+                    if value > best + self.gain_min:
                         best, plan, improved = value, trial, True
             if not improved or self.evals >= MAX_EVALS:
                 break
@@ -190,7 +195,7 @@ class SimulatorBot(Strategy):
                 continue
             if e.penalty:
                 continue
-            near = min(mine, key=lambda r: distance(r.pos, e.pos))
+            near = self.state.nearest(e, mine)
             stop = 2600 if e.type == "K" else 1500
             gap = distance(e.pos, near.pos) - stop
             if gap > 1:
@@ -204,7 +209,7 @@ class SimulatorBot(Strategy):
         """Robot de `targets` que `shooter` toucherait vraiment (le plus
         intéressant), en visant chacun depuis `origin`."""
         start = shooter.pos if origin is None else origin
-        best = None
+        hits = []
         for t in targets:
             if distance(start, t.pos) - self.sim.radius > self.sim.range:
                 continue
@@ -212,11 +217,13 @@ class SimulatorBot(Strategy):
             if angle is None:
                 continue
             hit, _ = self.sim.first_hit(robots, shooter, angle, origin=start)
-            if hit is not None and hit.alive and hit.team_id != shooter.team_id:
-                if best is None or (not hit.carrying_element, TARGET_ORDER[hit.type]) \
-                        < (not best.carrying_element, TARGET_ORDER[best.type]):
-                    best = hit
-        return best
+            if hit is not None and hit.alive and hit.team_id != shooter.team_id \
+                    and hit not in hits:
+                hits.append(hit)
+        # le plus intéressant ; à égalité, le plus proche, puis celui de droite
+        ordre = self.state.by_distance(start, hits, key=lambda h: (
+            not h.carrying_element, TARGET_ORDER[h.type]))
+        return ordre[0] if ordre else None
 
     # ==================================================================
     # Candidats
@@ -226,11 +233,23 @@ class SimulatorBot(Strategy):
         st = self.state
         # None : aucune commande, le robot continue sur sa lancée
         cands = [None, base, st.stop(robot)]
-        for k in range(8):       # 8 directions
-            cands.append(move(robot, angle=45 * k, speed=st.max_speed(robot)))
+        # 8 directions, comptées depuis « tout droit » (de la base vers le
+        # centre) : toutes les équipes essaient les mêmes coups dans le même
+        # ordre, quelle que soit leur place (à égalité, le premier l'emporte)
+        devant = angle_to(st.my_base, st.center) or 0
+        for k in range(8):
+            a = round((devant + 45 * k) % 360, 6)
+            cands.append(move(robot, angle=a, speed=st.max_speed(robot)))
             if robot.type != "R":
-                cands.append(move(robot, angle=45 * k, speed=st.max_speed(robot) / 2))
-        threats = [r for r in self.sim.robots if r.team_id != self.me and r.alive]
+                cands.append(move(robot, angle=a, speed=st.max_speed(robot) / 2))
+
+        def ordre(items):
+            """Du plus proche au plus loin, à égalité celui de droite."""
+            return st.by_distance(robot, list(items))
+
+        threats = ordre(r for r in self.sim.robots if r.team_id != self.me and r.alive)
+        enemies = ordre(st.enemies)
+        ghosts = ordre(self.ghosts)
         radar = next(iter(st.my_robots_of_type("R")), None)
 
         collector = next(iter(st.my_robots_of_type("C")), None)
@@ -239,7 +258,7 @@ class SimulatorBot(Strategy):
             if st.phase == 1 and robot.carrying_element:
                 cands.append(st.move_towards(robot, st.my_base))
             if st.phase == 1:
-                for battery in st.free_batteries:
+                for battery in ordre(st.free_batteries):
                     cands.append(st.move_towards(robot, battery.pos))
             for d in st.my_robots_of_type("D") + st.my_robots_of_type("R"):
                 cands.append(st.move_towards(robot, d, stop_at=700))
@@ -247,7 +266,7 @@ class SimulatorBot(Strategy):
                 if robot.captive_id is not None:
                     cands.append(st.move_towards(robot, st.dump_center))
                 else:
-                    for e in st.enemies:
+                    for e in enemies:
                         if e.speed == 0 and e.captive_id is None and \
                                 robot.distance_to(e) <= 4000:
                             cands.append(st.move_towards(robot, e))
@@ -259,17 +278,18 @@ class SimulatorBot(Strategy):
             for d in st.my_robots_of_type("D") + st.my_robots_of_type("K"):
                 cands.append(st.move_towards(robot, d, stop_at=600))
         elif robot.type == "K":
-            for e in st.targets_in_range(robot) + st.shielded_targets(robot):
+            tirs = ordre(st.targets_in_range(robot)) + ordre(st.shielded_targets(robot))
+            for e in tirs:
                 cands.append(st.shoot_at(robot, e))   # derrière un bouclier : l'user
-            for g in self.ghosts:
+            for g in ghosts:
                 if g.carrying_element:   # intercepter le porteur
                     cands.append(st.move_towards(robot, g.pos, stop_at=2000))
-            for g in self.ghosts:    # tir « à l'aveugle » sur un ennemi disparu
+            for g in ghosts:    # tir « à l'aveugle » sur un ennemi disparu
                 if (distance(robot.pos, g.pos) - st.robot_radius
                         <= st.config["destructor_range"]
                         and st.aim(robot, g) is not None):   # pas sur nous-mêmes
                     cands.append(st.shoot_at(robot, g))
-            for e in st.enemies:
+            for e in enemies:
                 spot = st.firing_spot(robot, e)
                 if spot:
                     cands.append(st.move_towards(robot, spot))

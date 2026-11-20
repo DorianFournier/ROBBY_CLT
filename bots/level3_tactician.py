@@ -77,7 +77,7 @@ class TacticianBot(Strategy):
         candidates = [p for t, p in self.threats if t in types]
         if not candidates:
             return None
-        return min(candidates, key=lambda p: state.distance(origin, p))
+        return state.nearest(origin, candidates)
 
     def hunt_point(self, state):
         """Phase 2 : tenir le centre du prochain cercle. Avec le brouillard de
@@ -101,8 +101,7 @@ class TacticianBot(Strategy):
         dernière position sans limite de temps."""
         danger = self.nearest_threat(state, robot, "K")
         if self.killers and state.phase == 2:
-            remembered = min(self.killers.values(),
-                             key=lambda p: state.distance(robot, p))
+            remembered = state.nearest(robot, list(self.killers.values()))
             if danger is None or state.distance(robot, remembered) < \
                     state.distance(robot, danger):
                 danger = remembered
@@ -175,7 +174,7 @@ class TacticianBot(Strategy):
         known = [p for t, p in self.threats if t == "K"] + list(self.killers.values())
         if not known:
             return None
-        return min(known, key=lambda p: state.distance(origin, p))
+        return state.nearest(origin, known)
 
     def play_defender(self, state, d):
         # phase 1 : il protège le Collecteur (et sa batterie), puis le Radar
@@ -216,17 +215,17 @@ class TacticianBot(Strategy):
     def play_destructor(self, state, k):
         targets = state.targets_in_range(k)
         if targets:
-            best = min(targets, key=lambda e: (not e.carrying_element,
-                                               PRIORITY[e.type], state.distance(k, e)))
+            best = state.by_distance(k, targets, key=lambda e: (
+                not e.carrying_element, PRIORITY[e.type]))[0]
             return state.shoot_at(k, best)
         # Ennemi à portée mais derrière un bouclier : tirer quand même l'use, et
         # il se brise au bout de quelques tirs. Sinon, contourner le bouclier
         # d'un ennemi visible plus loin pour pouvoir tirer au tour suivant.
         shielded = state.shielded_targets(k)
         if shielded:
-            return state.shoot_at(k, min(shielded, key=lambda e: state.distance(k, e)))
-        for enemy in sorted(state.enemies, key=lambda e: (PRIORITY[e.type],
-                                                          state.distance(k, e))):
+            return state.shoot_at(k, state.nearest(k, shielded))
+        for enemy in state.by_distance(k, state.enemies,
+                                       key=lambda e: PRIORITY[e.type]):
             spot = state.firing_spot(k, enemy)
             if spot:
                 return state.move_towards(k, spot)

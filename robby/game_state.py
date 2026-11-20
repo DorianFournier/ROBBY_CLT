@@ -236,8 +236,21 @@ class GameState:
         return [e for e in self.elements if e.is_free]
 
     def nearest_battery(self, origin) -> Element | None:
-        """Batterie libre la plus proche de `origin` (robot ou point), ou None."""
+        """Batterie libre la plus proche de `origin` (robot ou point), ou None.
+        À égalité (deux batteries à la même distance), celle de droite."""
         return self.nearest(origin, self.free_batteries)
+
+    def side(self, point) -> float:
+        """Angle (0 à 360, sens horaire) entre « tout droit » (de votre base
+        vers le centre) et la direction de `point` vue de votre base : petit
+        = sur votre droite. Sert à départager deux choix à égalité de la
+        même façon pour toutes les équipes, quelle que soit leur place."""
+        base = self.my_base
+        devant = angle_to(base, self.center)
+        cap = angle_to(base, _pos(point))
+        if devant is None or cap is None:
+            return 0.0
+        return round((cap - devant) % 360, 6)
 
     def best_battery(self, robot) -> Element | None:
         """Batterie libre la plus RENTABLE pour ce Collecteur : ses points divisés
@@ -249,18 +262,40 @@ class GameState:
             trajet = distance(robot.pos, e.pos) + distance(e.pos, base)
             return (e.points or 1) / (trajet + 1000)
 
-        return max(self.free_batteries, key=rentabilite, default=None)
+        if not self.free_batteries:
+            return None
+        # deux batteries symétriques (à 0,01 % près) : celle de droite
+        best = max(rentabilite(e) for e in self.free_batteries)
+        ex_aequo = [e for e in self.free_batteries
+                    if rentabilite(e) >= best * (1 - 1e-4)]
+        return min(ex_aequo, key=self.side)
 
     def carried_battery(self, robot) -> Element | None:
         """Batterie portée par `robot` (ou None)."""
         return next((e for e in self.elements if e.carried_by_id == robot.id), None)
 
-    @staticmethod
-    def nearest(origin, candidates):
-        """Le robot de `candidates` le plus proche de `origin` (robot ou point)."""
-        if not candidates:
-            return None
-        return min(candidates, key=lambda r: distance(_pos(origin), r.pos))
+    def nearest(self, origin, candidates):
+        """Le robot, la batterie ou le point de `candidates` le plus proche de
+        `origin` (robot ou point). À égalité (à une unité près), celui de
+        droite (voir `side`) : toutes les équipes départagent de la même façon."""
+        ordre = self.by_distance(origin, candidates)
+        return ordre[0] if ordre else None
+
+    def by_distance(self, origin, candidates, key=None):
+        """`candidates` du plus proche au plus loin de `origin`. Deux
+        candidats à moins d'une unité d'écart sont à égalité : celui de droite
+        d'abord. `key(c)` (facultatif) passe avant la distance."""
+        o = _pos(origin)
+        items = sorted(candidates, key=lambda c: ((key(c),) if key else ()) +
+                       (distance(o, _pos(c)),))
+        out, group = [], []
+        for c in items:
+            if group and ((key and key(c) != key(group[0]))
+                          or distance(o, _pos(c)) - distance(o, _pos(group[0])) > 1.0):
+                out += sorted(group, key=self.side)
+                group = []
+            group.append(c)
+        return out + sorted(group, key=self.side)
 
     # ------------------------------------------------------------------
     # Distances, arène
