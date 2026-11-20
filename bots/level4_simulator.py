@@ -23,6 +23,7 @@
 # Nombre de simulations borné (MAX_EVALS) : le temps de réflexion reste
 # court, et le bot est reproductible (pas de limite en secondes).
 
+from bots.chasse import chasse
 from bots.level3_tactician import TacticianBot
 from robby import GameState, move, shield
 from robby.geometry import angle_to, direction, distance
@@ -55,6 +56,8 @@ CAPTIVE_HELD = 0.7   # part de sa valeur que vaut un prisonnier tenu
 TO_DUMP = 0.15       # par unité qui reste jusqu'à la déchèterie
 GRAB_DANGER = 0.3    # un de nos robots à l'arrêt près d'un Collecteur ennemi
 GRAB_DANGER_RANGE = 1800
+TO_PREY = 0.03       # Collecteur libre : par unité jusqu'à la proie la plus proche
+TO_PREY_ALONE = 0.15  # ... quand nous n'avons plus de Destructeur (il attaque)
 
 
 def captives_held(res, team_id):
@@ -263,11 +266,14 @@ class SimulatorBot(Strategy):
             for d in st.my_robots_of_type("D") + st.my_robots_of_type("R"):
                 cands.append(st.move_towards(robot, d, stop_at=700))
             if st.dump:                    # phase 2 : la déchèterie
+                pistes = [g.pos for g in ghosts if g.type != "C"]
+                for offensif in (True, False):
+                    cands.append(chasse(st, robot, pistes, offensif=offensif))
                 if robot.captive_id is not None:
                     cands.append(st.move_towards(robot, st.dump_center))
                 else:
                     for e in enemies:
-                        if e.speed == 0 and e.captive_id is None and \
+                        if e.speed == 0 and e.type != "C" and \
                                 robot.distance_to(e) <= 4000:
                             cands.append(st.move_towards(robot, e))
         elif robot.type == "R":
@@ -366,6 +372,14 @@ class SimulatorBot(Strategy):
                     value -= CAPTIVE_HELD * OWN_VALUE[r.type]
             for r in grab_threatened(res, me):
                 value -= GRAB_DANGER * OWN_VALUE[r.type]
+            # le Collecteur libre chasse : il se rapproche de la proie la plus
+            # proche (surtout si nous n'avons plus de Destructeur)
+            alone = not any(r.type == "K" for r in mine)
+            prey = [e for e in enemies if e.type != "C"]   # un C est imprenable
+            for c in mine:
+                if c.type == "C" and c.captive_id is None and prey:
+                    d = min(distance(c.pos, e.pos) for e in prey)
+                    value -= (TO_PREY_ALONE if alone else TO_PREY) * d
 
         # --- 1 bis. boucliers usés ou brisés (anti-blocage)
         for did, damage in res.shield_damage.items():
@@ -427,6 +441,8 @@ class SimulatorBot(Strategy):
             for r in mine:
                 if r is radar:
                     continue
+                if r.type == "C" and st.dump:
+                    continue        # phase 2 : le Collecteur part en chasse
                 if r.type == "C" and st.phase == 1:
                     value -= 0.08 * max(0.0, distance(r.pos, radar.pos) - 2000)
                 else:
