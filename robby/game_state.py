@@ -252,22 +252,25 @@ class GameState:
             return 0.0
         return round((cap - devant) % 360, 6)
 
-    def best_battery(self, robot) -> Element | None:
+    def best_battery(self, robot, exclude=()) -> Element | None:
         """Batterie libre la plus RENTABLE pour ce Collecteur : ses points divisés
         par le trajet (aller la chercher, puis la ramener à votre base).
-        La grosse batterie du centre rapporte plus, mais tout le monde y va."""
+        La grosse batterie du centre rapporte plus, mais tout le monde y va.
+        `exclude` : numéros (id) de batteries à ne pas viser (s'il n'en reste
+        aucune autre, elles redeviennent possibles)."""
         base = self.my_base
+        libres = [e for e in self.free_batteries if e.id not in exclude] \
+            or self.free_batteries
 
         def rentabilite(e):
             trajet = distance(robot.pos, e.pos) + distance(e.pos, base)
             return (e.points or 1) / (trajet + 1000)
 
-        if not self.free_batteries:
+        if not libres:
             return None
         # deux batteries symétriques (à 0,01 % près) : celle de droite
-        best = max(rentabilite(e) for e in self.free_batteries)
-        ex_aequo = [e for e in self.free_batteries
-                    if rentabilite(e) >= best * (1 - 1e-4)]
+        best = max(rentabilite(e) for e in libres)
+        ex_aequo = [e for e in libres if rentabilite(e) >= best * (1 - 1e-4)]
         return min(ex_aequo, key=self.side)
 
     def carried_battery(self, robot) -> Element | None:

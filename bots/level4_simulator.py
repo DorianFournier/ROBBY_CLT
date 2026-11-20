@@ -273,7 +273,7 @@ class SimulatorBot(Strategy):
                     cands.append(st.move_towards(robot, st.dump_center))
                 else:
                     for e in enemies:
-                        if e.speed == 0 and e.type != "C" and \
+                        if e.speed == 0 and e.captive_id is None and \
                                 robot.distance_to(e) <= 4000:
                             cands.append(st.move_towards(robot, e))
         elif robot.type == "R":
@@ -375,7 +375,9 @@ class SimulatorBot(Strategy):
             # le Collecteur libre chasse : il se rapproche de la proie la plus
             # proche (surtout si nous n'avons plus de Destructeur)
             alone = not any(r.type == "K" for r in mine)
-            prey = [e for e in enemies if e.type != "C"]   # un C est imprenable
+            # un Collecteur n'est une proie que garé, sans prisonnier
+            prey = [e for e in enemies if e.type != "C"
+                    or (e.speed == 0 and e.captive_id is None)]
             for c in mine:
                 if c.type == "C" and c.captive_id is None and prey:
                     d = min(distance(c.pos, e.pos) for e in prey)
