@@ -226,7 +226,7 @@ class TurnSimulator:
             result.killers[captive.id] = c.team_id
             result.dumps.append((c.id, captive.id, points))
         free = [r for r in robots.values() if r.alive and not r.captive]
-        by_target = {}
+        choice = {}
         for c in free:
             if c.type != "C" or c.captive_id is not None:
                 continue
@@ -238,7 +238,12 @@ class TurnSimulator:
                 if d <= self.grab_radius and (best is None or (d, t.id) < best[:2]):
                     best = (d, t.id, t)
             if best is not None:
-                by_target.setdefault(best[2].id, []).append((best[0], c.id))
+                choice[c.id] = best
+        by_target = {}
+        for cid, (d, tid, _) in choice.items():
+            if tid in choice and choice[tid][1] == cid:
+                continue        # deux Collecteurs qui s'attrapent l'un l'autre
+            by_target.setdefault(tid, []).append((d, cid))
         for tid, takers in by_target.items():
             takers.sort(key=lambda x: x[0])
             if len(takers) > 1 and takers[1][0] - takers[0][0] < 1e-9:

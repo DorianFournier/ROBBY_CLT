@@ -9,6 +9,7 @@
 #     suit le Radar.
 #   - Zone (phase 2) : tout robot en danger rentre dans la zone sûre d'abord.
 
+from bots.chasse import chasse
 from robby import GameState, shield
 from robby.geometry import angle_diff
 from robby.strategy import Strategy
@@ -47,13 +48,9 @@ class RusherBot(Strategy):
             battery = state.nearest_battery(collector)
             if battery:
                 return state.move_towards(collector, battery.pos)
-        if state.dump:
-            if collector.captive_id is not None:
-                return state.move_towards(collector, state.dump_center)
-            stopped = [e for e in state.enemies if e.speed == 0
-                       and e.captive_id is None and collector.distance_to(e) <= 3000]
-            if stopped:
-                return state.move_towards(collector, state.nearest(collector, stopped))
+        command = chasse(state, collector, offensif=True)   # phase 2 : déchèterie
+        if command:
+            return command
         radars = state.my_robots_of_type("R")
         if radars:
             return state.move_towards(collector, state.clamp_to_zone(radars[0].pos, 2),
@@ -67,8 +64,8 @@ class RusherBot(Strategy):
         if state.phase == 1 and collectors:
             target = state.clamp_to_zone(collectors[0].pos, 2)
             return state.move_towards(radar, target, stop_at=800)
-        killers = state.my_robots_of_type("K")
-        if killers:
+        killers = state.my_robots_of_type("K") or state.my_robots_of_type("C")
+        if killers:     # le Destructeur, sinon le Collecteur qui chasse
             target = state.clamp_to_zone(killers[0].pos, 2)
             return state.move_towards(radar, target, stop_at=1200)
         return state.move_towards(radar, state.clamp_to_zone(state.safe_center, 2))

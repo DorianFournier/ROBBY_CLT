@@ -13,6 +13,7 @@
 #     en phase 2, reste groupé, au centre de la zone, et mène la chasse.
 #   - Défenseur : protège le Collecteur en phase 1, le Radar en phase 2.
 
+from bots.chasse import chasse
 from robby import GameState, shield
 from robby.geometry import angle_diff, direction
 from robby.strategy import Strategy
@@ -129,28 +130,17 @@ class TacticianBot(Strategy):
             if battery:
                 return state.move_towards(c, battery.pos)
         if state.dump:      # phase 2 : la déchèterie
-            if c.captive_id is not None:
-                return state.move_towards(c, state.dump_center)
+            souvenirs = [p for t, p in self.threats if t != "C"] + \
+                list(self.killers.values())
+            command = chasse(state, c, souvenirs)
+            if command:
+                return command
             danger = self.danger_for(state, c)
             if danger:
                 return self.hide(state, c, danger)
-            prey = self.prey_for(state, c)
-            if prey is not None:
-                return state.move_towards(c, prey)
         # plus rien à ramasser : il reste avec le Radar
         target = self.radar.pos if self.radar else self.home(state)
         return state.move_towards(c, state.clamp_to_zone(target, 2), stop_at=900)
-
-    def prey_for(self, state, c):
-        """Ennemi à l'arrêt que le Collecteur peut aller attraper : proche,
-        et sans Destructeur ennemi à portée de lui."""
-        stopped = [e for e in state.enemies if e.speed == 0 and e.captive_id is None
-                   and c.distance_to(e) <= 2500]
-        reach = state.config["destructor_range"] + 1000
-        safe = [e for e in stopped
-                if not any(k.type == "K" and k.distance_to(e) <= reach
-                           for k in state.enemies)]
-        return state.nearest(c, safe) if safe else None
 
     def play_radar(self, state, radar):
         danger = self.danger_for(state, radar)
@@ -158,6 +148,11 @@ class TacticianBot(Strategy):
             return self.hide(state, radar, danger)
         if state.phase == 1 and self.collector is not None:
             # il accompagne le Collecteur : on voit qui vient le chercher
+            target = state.clamp_to_zone(self.collector.pos, 2)
+            return state.move_towards(radar, target, stop_at=1200)
+        if state.phase == 2 and self.collector is not None and \
+                not state.my_robots_of_type("K"):
+            # plus de Destructeur : le Collecteur chasse, le Radar l'éclaire
             target = state.clamp_to_zone(self.collector.pos, 2)
             return state.move_towards(radar, target, stop_at=1200)
         if state.phase == 2:   # le Radar mène la chasse, les autres l'escortent

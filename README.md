@@ -224,7 +224,12 @@ ramasser : il ramasse... les ennemis !
 - Un Collecteur qui finit son tour **au contact** (700 unités, centre à
   centre) d'un robot ennemi **à l'arrêt** (vitesse 0 : arrêté, bloqué ou
   pénalisé) l'**attrape**. Un robot qui roule ne peut pas être attrapé.
-  Deux Collecteurs sur le même robot : le plus proche l'emporte.
+  Deux Collecteurs sur le même robot : le plus proche l'emporte. Un
+  Collecteur chargé ne peut pas être attrapé, et deux Collecteurs qui
+  s'attraperaient l'un l'autre ne prennent rien.
+- Un robot qui roule ne peut pas être attrapé... sauf si on lui **coupe la
+  route** : bloqué par le Collecteur, il s'arrête net, au contact, et il est
+  pris dans la foulée.
 - Le prisonnier est **inactif** : ses commandes sont ignorées (sans
   pénalité), il ne bloque personne, les tirs le traversent (on ne peut ni
   l'achever ni le délivrer en tirant), et son Radar ne voit plus rien.
@@ -368,7 +373,7 @@ au plus fort. Le but est de les battre l'un après l'autre.
 | Option | Bot | Comportement |
 |---|---|---|
 | `bot1` | `RandomBot` | Joue au hasard, mais sans faute de règle (il fuit la tempête). |
-| `bot2` | `RusherBot` | « Fonceur » : le Collecteur va droit sur la batterie (le Radar l'escorte) et, en phase 2, sur l'ennemi à l'arrêt le plus proche, le Destructeur tire sur l'ennemi le plus proche (ou use son bouclier) ou lui fonce dessus, le Défenseur suit le Radar et tourne son bouclier vers l'ennemi. Aucune prudence, aucune mémoire. |
+| `bot2` | `RusherBot` | « Fonceur » : le Collecteur va droit sur la batterie (le Radar l'escorte) et, en phase 2, chasse toujours les ennemis pour la déchèterie, le Destructeur tire sur l'ennemi le plus proche (ou use son bouclier) ou lui fonce dessus, le Défenseur suit le Radar et tourne son bouclier vers l'ennemi. Aucune prudence, aucune mémoire. |
 | `bot3` | `TacticianBot` | « Tacticien » : il se souvient des ennemis vus, son Collecteur se cache derrière le Défenseur quand un Destructeur ennemi menace, et le Radar l'escorte pour le voir venir. En phase 2, il tient le centre du prochain cercle (celui qui attend voit l'autre arriver en premier), avance derrière son Défenseur, contourne les boucliers ennemis pour tirer de côté, ou les use. |
 | `bot4` | `SimulatorBot` | « Simulateur » : il essaie des centaines de plans dans un simulateur de tour et garde le meilleur (voir plus bas). |
 
@@ -381,6 +386,12 @@ nul 0,5, défaite 0 :
 | bot3 contre bot2 | 0,59 |
 | bot4 contre bot3 | 0,75 |
 | bot4 contre bot2 | 0,72 |
+
+En phase 2, tous les bots envoient leur Collecteur à la chasse
+(`bots/chasse.py`) : il attrape les ennemis à l'arrêt ou leur coupe la route,
+et les porte à la déchèterie. Prudent tant que leurs Destructeurs se
+battent, il devient offensif quand il n'en reste plus (il patrouille, et le
+Radar le suit pour lui donner la vue).
 
 Lire leur code (`bots/level2_rusher.py`, `bots/level3_tactician.py`...) est une
 bonne source d'idées... mais pour les battre, il faudra faire mieux !
