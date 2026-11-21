@@ -13,7 +13,7 @@
 #     en phase 2, reste groupé, au centre de la zone, et mène la chasse.
 #   - Défenseur : protège le Collecteur en phase 1, le Radar en phase 2.
 
-from bots.chasse import chasse, heurte
+from bots.chasse import aveugle, chasse, heurte, patrouille
 from robby import GameState, shield, shoot
 from robby.geometry import angle_diff, direction
 from robby.strategy import Strategy
@@ -211,6 +211,13 @@ class TacticianBot(Strategy):
         else:
             threat = self.nearest_threat(state, protect, "K") or \
                 self.nearest_threat(state, protect)
+        if threat is None and aveugle(state):
+            # plus de Radar : il suit le Destructeur qui patrouille
+            killers = state.my_robots_of_type("K")
+            if killers:
+                return state.move_towards(d, state.clamp_to_zone(killers[0].pos, 2),
+                                          stop_at=700)
+            return patrouille(state, d)
         if threat is None:
             target = garde or self.home(state)
             return state.move_towards(d, state.clamp_to_zone(
@@ -260,5 +267,7 @@ class TacticianBot(Strategy):
         threat = self.nearest_threat(state, k)
         if threat:
             return state.move_towards(k, state.clamp_to_zone(threat, 2), stop_at=2600)
+        if aveugle(state):          # plus de Radar : patrouille
+            return patrouille(state, k)
         escort = self.radar.pos if self.radar else self.home(state)
         return state.move_towards(k, state.clamp_to_zone(escort, 2), stop_at=1000)

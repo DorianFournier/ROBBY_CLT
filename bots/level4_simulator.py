@@ -23,7 +23,7 @@
 # Nombre de simulations borné (MAX_EVALS) : le temps de réflexion reste
 # court, et le bot est reproductible (pas de limite en secondes).
 
-from bots.chasse import chasse, heurte
+from bots.chasse import aveugle, chasse, heurte, ronde
 from bots.level3_tactician import TacticianBot
 from robby import GameState, move, shield
 from robby.geometry import angle_to, direction, distance
@@ -121,8 +121,11 @@ class SimulatorBot(Strategy):
         self.start = {r.id: r for r in self.sim.robots}
         self.scenarios = self.enemy_scenarios()
         self.hunt = self.scout.hunt_point(state) if state.phase == 2 else None
-        if self.hunt is None and not state.my_robots_of_type("R"):
-            # aveugles : on cherche vers le prochain cercle
+        if aveugle(state) and state.my_robots:
+            # aveugles (plus de Radar) : on patrouille autour du centre
+            guide = (state.my_robots_of_type("K") or state.my_robots)[0]
+            self.hunt = ronde(state, guide)
+        elif self.hunt is None and not state.my_robots_of_type("R"):
             self.hunt = state.clamp_to_zone(state.safe_center, 3)
         self.evals = 0
 

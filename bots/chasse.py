@@ -36,6 +36,7 @@ DERNIER_RECOURS = 4000  # un Collecteur garé « compte » comme bien plus loin
 DETOURS = (60, -60, 100, -100, 150, -150)   # contournements essayés (degrés)
 RONDE = 2500         # rayon de la patrouille autour du centre de la zone
 ARRIVE = 800         # une piste atteinte (personne) est abandonnée
+TRAVERSEE = 4        # la ronde traverse le centre 4 tours sur 8
 
 
 def barre(state, c, cap, longueur, cible=None):
@@ -146,12 +147,30 @@ def heurte(robot, commande):
     return None
 
 
+def aveugle(state):
+    """Phase 2 et plus de Radar : l'équipe ne voit plus rien."""
+    return state.phase == 2 and not state.my_robots_of_type("R")
+
+
+def patrouille(state, robot):
+    """Équipe aveugle (Radar détruit) en phase 2 : on ne reste pas garé, on
+    tourne autour du centre de la zone, là où la tempête pousse tout le
+    monde. On finira par heurter un ennemi (voir heurte) ou par le croiser
+    à portée de tir."""
+    return aller(state, robot, ronde(state, robot))
+
+
 def ronde(state, c):
     """Point de patrouille : on tourne autour du centre de la zone, dans le
-    sens des aiguilles d'une montre, un quart de tour à la fois."""
+    sens des aiguilles d'une montre, un quart de tour à la fois, en
+    traversant le centre une fois sur deux (TRAVERSEE tours sur 2 x
+    TRAVERSEE) : deux équipes qui patrouillent ainsi finissent par se
+    croiser, au lieu de se suivre sur le même cercle sans jamais se voir."""
     centre = state.safe_center
     rayon = min(RONDE, max(0.0, state.storm_radius(2) - 1500))
     if rayon < 500:
+        return centre
+    if (state.turn // TRAVERSEE) % 2 == 0 and c.distance_to(centre) > 600:
         return centre
     a = angle_to(centre, c.pos)
     if a is None:

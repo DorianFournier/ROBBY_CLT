@@ -26,6 +26,7 @@
 from dataclasses import dataclass, field
 
 from robby.geometry import (
+    angle_diff,
     direction,
     distance,
     in_sector,
@@ -132,6 +133,7 @@ class TurnSimulator:
         self.grab_radius = c.get("grab_radius", 700)
         self.carry_speed = c.get("carry_speed", 600)
         self.dump_points = c.get("dump_points", {})
+        self.cross_angle = c.get("cross_angle", 90)
         self.robots += list(extra)
 
     # ------------------------------------------------------------------
@@ -392,6 +394,12 @@ class TurnSimulator:
                         other = proposed.get(o, pos[o])
                         if neutre(new) or neutre(other):
                             continue
+                        if o in proposed:
+                            # comme le serveur : deux robots qui roulent ne se
+                            # heurtent que s'ils se suivent ou arrivent de face
+                            ecart = angle_diff(robots[rid].heading, robots[o].heading)
+                            if 90 < ecart < 180 - self.cross_angle:
+                                continue
                         d_new = distance(new, other)
                         d_old = distance(pos[rid], pos[o])
                         # comme le serveur : refusé seulement en avançant
