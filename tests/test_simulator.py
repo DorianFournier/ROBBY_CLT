@@ -23,13 +23,17 @@ def test_move_goes_speed_units_and_slides_along_borders():
     assert res.robot(23).x > 3000                      # ...mais glisse
 
 
-def test_enemies_block_allies_pass_through():
+def test_robots_pass_through_each_other_only_shields_block():
     res = run([robot(13, 1, "K", 5000, 5000), robot(11, 1, "R", 7000, 5000),
-               robot(21, 2, "R", 5000, 9000), robot(14, 1, "K", 7000, 9000)],
+               robot(21, 2, "R", 5000, 9000), robot(14, 1, "K", 7000, 9000),
+               robot(32, 3, "D", 9500, 12000, shield=270),
+               robot(23, 2, "K", 6000, 12000)],
               {1: [move(13, angle=90, speed=3000)],
-               2: [move(21, angle=90, speed=1500)]})
+               2: [move(21, angle=90, speed=1500), move(23, angle=90, speed=3000)]})
     assert res.robot(13).x == pytest.approx(8000)      # traverse son Radar
-    assert res.robot(21).x <= 7000 - 600 + 1           # arrêté devant le K ennemi
+    assert res.robot(21).x == pytest.approx(6500)      # et le K ennemi aussi
+    assert res.robot(23).speed == 0                    # le bouclier, lui, arrête
+    assert res.robot(23).x <= 9500 - 1500 + 1
 
 
 def test_shots_first_enemy_and_shields():
@@ -116,10 +120,10 @@ def test_simulated_robots_keep_moving_and_stop_when_blocked():
     assert res.robot(23).pos == pytest.approx((8000, 5000))       # ennemi sur sa lancée
     res = TurnSimulator(state).run({1: [move(11, angle=0, speed=0)]})
     assert res.robot(11).pos == (2000, 9000) and res.robot(11).speed == 0
-    blocked = make_state([robot(13, 1, "K", 2000, 5000, heading=90, speed=5000),
-                               robot(21, 2, "R", 4000, 5000)])
+    blocked = make_state([robot(13, 1, "K", 2000, 5000, heading=90, speed=3000),
+                               robot(22, 2, "D", 4500, 5000, shield=270)])
     res = TurnSimulator(blocked).run({})
-    assert res.robot(13).speed == 0 and res.robot(13).x < 4000 - 600 + 1
+    assert res.robot(13).speed == 0 and res.robot(13).x < 4500 - 1500 + 1
 
 
 def test_simulated_shield_wears_breaks_and_cannot_be_raised():

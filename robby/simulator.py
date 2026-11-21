@@ -134,6 +134,8 @@ class TurnSimulator:
         self.carry_speed = c.get("carry_speed", 600)
         self.dump_points = c.get("dump_points", {})
         self.cross_angle = c.get("cross_angle", 90)
+        # les robots ennemis se bloquent-ils ? (sinon seuls les boucliers)
+        self.collisions = c.get("enemy_collisions", False)
         self.robots += list(extra)
 
     # ------------------------------------------------------------------
@@ -385,7 +387,7 @@ class TurnSimulator:
                     stopped.add(rid)
                     continue
                 proposed[rid] = (nx, ny)
-            while True:
+            while self.collisions:
                 refused = set()
                 for rid, new in proposed.items():
                     for o in pos:

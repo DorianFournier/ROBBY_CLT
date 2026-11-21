@@ -43,6 +43,8 @@ def barre(state, c, cap, longueur, cible=None):
     """Un ennemi (autre que `cible`) barre-t-il le trajet de `c` dans la
     direction `cap`, sur `longueur` unités ? (deux ennemis ne se traversent
     pas : on serait arrêté net en le frôlant)"""
+    if not state.config.get("enemy_collisions"):
+        return False        # les robots ne se bloquent pas entre eux
     dx, dy = direction(cap)
     gene = 2 * state.robot_radius + 50
     zones = state.neutral_zones()

@@ -41,6 +41,8 @@ DEFAULT_CONFIG = {
     "carry_speed": 600,         # vitesse max d'un Collecteur chargé
     "dump_radius": 700,         # rayon de la déchèterie
     "dump_points": {"K": 375, "D": 750, "C": 750, "R": 1125},
+    "enemy_collisions": False,  # seuls les boucliers bloquent les déplacements
+    "cross_angle": 90,
     "bases": {},
     "teams": {},
 }

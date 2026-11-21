@@ -155,8 +155,8 @@ class GameState:
         state.grab_targets(c)                ennemis à l'arrêt qu'un Collecteur
                                              peut attraper
         state.captives                       prisonniers visibles
-        state.in_neutral_zone(p)             bases et déchèterie : personne
-                                             n'y bloque personne
+        state.in_neutral_zone(p)             bases et déchèterie : aucun
+                                             bouclier n'y bloque
     """
 
     def __init__(self, msg: dict, team_id: int, config: dict | None = None):
