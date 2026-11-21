@@ -395,7 +395,10 @@ et les porte à la déchèterie (par le bord le plus proche). Sans proie en
 vue, il suit les pistes puis patrouille autour du centre : il ne reste
 jamais garé. Tant que leurs Destructeurs se battent, il leur laisse les
 proies couvertes par un Destructeur ennemi ; quand il n'en reste plus,
-il attaque tout, et le Radar le suit pour lui donner la vue.
+il attaque tout, et le Radar le suit pour lui donner la vue. Un robot
+contourne l'ennemi qui barre son trajet (d'abord par la droite), et un
+Destructeur arrêté net sans rien voir tire droit devant : quelque chose
+d'invisible (faute de Radar) lui barre la route.
 
 Lire leur code (`bots/level2_rusher.py`, `bots/level3_tactician.py`...) est une
 bonne source d'idées... mais pour les battre, il faudra faire mieux !

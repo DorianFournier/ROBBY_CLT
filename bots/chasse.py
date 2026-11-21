@@ -26,31 +26,51 @@
 #      Destructeurs. Il ne reste jamais garé : un robot à l'arrêt est une
 #      proie pour les Collecteurs ennemis.
 
+import math
+
 from robby import move
 from robby.geometry import angle_to, direction
 
 ROULE = 1500         # une proie qui roule « compte » comme plus loin
 DERNIER_RECOURS = 4000  # un Collecteur garé « compte » comme bien plus loin
-OBSTACLE = 1200      # un ennemi sur la route, à moins de ça : on le contourne
-DETOUR = 60          # ... par la droite, de ce nombre de degrés
+DETOURS = (60, -60, 100, -100, 150, -150)   # contournements essayés (degrés)
 RONDE = 2500         # rayon de la patrouille autour du centre de la zone
 ARRIVE = 800         # une piste atteinte (personne) est abandonnée
 
 
+def barre(state, c, cap, longueur, cible=None):
+    """Un ennemi (autre que `cible`) barre-t-il le trajet de `c` dans la
+    direction `cap`, sur `longueur` unités ? (deux ennemis ne se traversent
+    pas : on serait arrêté net en le frôlant)"""
+    dx, dy = direction(cap)
+    gene = 2 * state.robot_radius + 50
+    for e in state.enemies:
+        if e is cible:
+            continue
+        ex, ey = e.x - c.x, e.y - c.y
+        t = min(max(ex * dx + ey * dy, 0.0), longueur)     # point le plus proche
+        proche = math.hypot(ex - dx * t, ey - dy * t)
+        if proche < gene and proche < math.hypot(ex, ey) - 1:
+            return True
+    return False
+
+
 def aller(state, c, but, cible=None):
-    """Vers `but`, en contournant par la droite un ennemi (autre que la
-    cible) qui barre la route : deux Collecteurs face à face se croisent
-    au lieu de se bloquer nez à nez."""
+    """Vers `but`, en contournant un ennemi (autre que la cible) qui barre
+    le trajet : d'abord par la droite, puis par la gauche, de plus en plus
+    large. Deux robots face à face se croisent au lieu de se bloquer nez à
+    nez (sinon chacun répéterait la même commande bloquée, tour après tour)."""
     cap = c.angle_to(but)
-    if cap is not None:
-        for e in state.enemies:
-            a = c.angle_to(e)
-            # un ennemi devant nous, plus près que le but : il barre la route
-            if e is not cible and a is not None and c.distance_to(e) <= OBSTACLE \
-                    and c.distance_to(e) < c.distance_to(but) \
-                    and abs((a - cap + 180) % 360 - 180) < 45:
-                return move(c, angle=(cap + DETOUR) % 360, speed=state.max_speed(c))
-    return state.move_towards(c, but)
+    if cap is None:
+        return state.move_towards(c, but)
+    pas = min(c.distance_to(but), state.max_speed(c))
+    if not barre(state, c, cap, pas, cible):
+        return state.move_towards(c, but)
+    vitesse = state.max_speed(c)
+    for ecart in DETOURS:
+        if not barre(state, c, cap + ecart, vitesse):
+            return move(c, angle=(cap + ecart) % 360, speed=vitesse)
+    return move(c, angle=(cap + DETOURS[0]) % 360, speed=vitesse)
 
 
 def chasse(state, c, souvenirs=(), offensif=None):
@@ -111,6 +131,18 @@ def bord_de_la_decheterie(state, c):
         return centre
     return (centre[0] + (c.x - centre[0]) * rayon / d,
             centre[1] + (c.y - centre[1]) * rayon / d)
+
+
+def heurte(robot, commande):
+    """Cap où `robot` a été arrêté net au dernier tour alors qu'on lui
+    avait demandé de rouler (`commande` : sa dernière commande), ou None.
+    Arrêté net = quelque chose barre la route : un ennemi (peut-être
+    invisible, faute de Radar) ou un bouclier ennemi."""
+    if (commande and commande.get("action") == "MOVE"
+            and (commande.get("speed") or 0) > 0 and robot.speed == 0
+            and robot.penalty == 0 and robot.heading is not None):
+        return robot.heading
+    return None
 
 
 def ronde(state, c):

@@ -13,13 +13,15 @@
 #     en phase 2, reste groupé, au centre de la zone, et mène la chasse.
 #   - Défenseur : protège le Collecteur en phase 1, le Radar en phase 2.
 
-from bots.chasse import chasse
-from robby import GameState, shield
+from bots.chasse import chasse, heurte
+from robby import GameState, shield, shoot
 from robby.geometry import angle_diff, direction
 from robby.strategy import Strategy
 
 MEMORY = 6          # tours pendant lesquels on se souvient d'un ennemi
 DANGER = 4500       # un K ennemi plus près que ça du Radar : menace
+CALM = 1000         # ... et il ne repart que quand la menace est à DANGER + CALM
+AVOID = 15          # tours sans viser la batterie où le Collecteur est mort
 PRIORITY = {"C": 1, "R": 1, "K": 2, "D": 3}
 
 
@@ -30,14 +32,23 @@ class TacticianBot(Strategy):
         self.killers = {}   # K ennemis : id -> dernière position (sans limite)
         self.last_known = None   # dernière position ennemie connue (sans limite)
         self.team_id, self.config = None, {}
+        self.hiding = set()      # robots qui se cachent (voir danger_for)
+        self.avoided = {}        # batterie -> tour jusqu'auquel l'éviter
+        self.target_battery = None
+        self.collector_id = None
+        self.phase = 1
 
     def on_game_start(self, team_id, config):
         self.team_id, self.config = team_id, config
 
     def on_turn_result(self, turn, result):
-        for robot_id in result.get("deaths", []):
+        deaths = result.get("deaths", [])
+        for robot_id in deaths:
             self.seen.pop(robot_id, None)
             self.killers.pop(robot_id, None)
+        if self.collector_id in deaths and self.phase == 1 and \
+                self.target_battery is not None:
+            self.avoided[self.target_battery] = turn + AVOID
 
     # ------------------------------------------------------------------
 
@@ -54,6 +65,9 @@ class TacticianBot(Strategy):
         self.radar = radars[0] if radars else None
         collectors = state.my_robots_of_type("C")
         self.collector = collectors[0] if collectors else None
+        if self.collector is not None:
+            self.collector_id = self.collector.id
+        self.phase = state.phase
         commands = []
         for robot in state.my_robots:
             if not robot.can_act:
@@ -72,6 +86,9 @@ class TacticianBot(Strategy):
             command = state.keep_safe(robot, command)   # tir en roulant : prudence
             if command:
                 commands.append(command)
+        # dernières commandes : un robot arrêté net au tour suivant a heurté
+        # quelque chose (voir bots/chasse.py, heurte)
+        self.last = {c["robot_id"]: c for c in commands}
         return commands
 
     def nearest_threat(self, state, origin, types="RCDK"):
@@ -106,7 +123,15 @@ class TacticianBot(Strategy):
             if danger is None or state.distance(robot, remembered) < \
                     state.distance(robot, danger):
                 danger = remembered
-        return danger if danger and state.distance(robot, danger) < DANGER else None
+        # hystérésis : un robot qui se cache ne repart que quand la menace est
+        # nettement plus loin (sinon, à la limite, il ferait demi-tour à
+        # chaque tour : il se cache, n'est plus menacé, repart, est menacé...)
+        limit = DANGER + CALM if robot.id in self.hiding else DANGER
+        if danger and state.distance(robot, danger) < limit:
+            self.hiding.add(robot.id)
+            return danger
+        self.hiding.discard(robot.id)
+        return None
 
     def hide(self, state, robot, danger):
         """Se cacher derrière le Défenseur, sinon s'éloigner de la menace."""
@@ -126,7 +151,11 @@ class TacticianBot(Strategy):
             danger = self.danger_for(state, c)
             if danger:
                 return self.hide(state, c, danger)
-            battery = state.best_battery(c)
+            # la batterie où notre Collecteur vient d'être abattu est trop
+            # disputée : on en vise une autre pendant AVOID tours
+            avoid = {b for b, end in self.avoided.items() if state.turn <= end}
+            battery = state.best_battery(c, exclude=avoid)
+            self.target_battery = battery.id if battery else None
             if battery:
                 return state.move_towards(c, battery.pos)
         if state.dump:      # phase 2 : la déchèterie
@@ -219,6 +248,10 @@ class TacticianBot(Strategy):
         shielded = state.shielded_targets(k)
         if shielded:
             return state.shoot_at(k, state.nearest(k, shielded))
+        # arrêté net sans rien voir : un ennemi invisible est juste devant
+        bump = heurte(k, getattr(self, "last", {}).get(k.id))
+        if bump is not None:
+            return shoot(k, angle=bump)
         for enemy in state.by_distance(k, state.enemies,
                                        key=lambda e: PRIORITY[e.type]):
             spot = state.firing_spot(k, enemy)

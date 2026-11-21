@@ -9,8 +9,8 @@
 #     suit le Radar.
 #   - Zone (phase 2) : tout robot en danger rentre dans la zone sûre d'abord.
 
-from bots.chasse import chasse
-from robby import GameState, shield
+from bots.chasse import aller, chasse, heurte, ronde
+from robby import GameState, shield, shoot
 from robby.geometry import angle_diff
 from robby.strategy import Strategy
 
@@ -36,6 +36,9 @@ class RusherBot(Strategy):
             command = state.keep_safe(robot, command)   # tir en roulant : prudence
             if command:
                 commands.append(command)
+        # dernières commandes : un robot arrêté net au tour suivant a heurté
+        # quelque chose (voir bots/chasse.py, heurte)
+        self.last = {c["robot_id"]: c for c in commands}
         return commands
 
     def collector(self, state, collector):
@@ -59,11 +62,15 @@ class RusherBot(Strategy):
 
     def radar(self, state, radar):
         """Phase 1 : le Radar accompagne le Collecteur (on voit qui vient le
-        chercher). Phase 2 : il suit le Destructeur, pour lui donner la vision."""
+        chercher). Phase 2 : il suit le Destructeur, pour lui donner la vision ;
+        si personne n'est en vue, c'est lui qui part à la recherche des ennemis
+        (le Destructeur le suit), sinon tout le monde s'attendrait."""
         collectors = state.my_robots_of_type("C")
         if state.phase == 1 and collectors:
             target = state.clamp_to_zone(collectors[0].pos, 2)
             return state.move_towards(radar, target, stop_at=800)
+        if state.phase == 2 and not state.enemies:
+            return aller(state, radar, ronde(state, radar))
         killers = state.my_robots_of_type("K") or state.my_robots_of_type("C")
         if killers:     # le Destructeur, sinon le Collecteur qui chasse
             target = state.clamp_to_zone(killers[0].pos, 2)
@@ -79,6 +86,10 @@ class RusherBot(Strategy):
         shielded = state.shielded_targets(k)
         if shielded:
             return state.shoot_at(k, state.nearest(k, shielded))
+        # arrêté net sans rien voir : un ennemi invisible est juste devant
+        bump = heurte(k, getattr(self, "last", {}).get(k.id))
+        if bump is not None:
+            return shoot(k, angle=bump)
         enemy = state.nearest(k, state.enemies)
         if enemy:
             return state.move_towards(k, state.clamp_to_zone(enemy.pos, 2),
