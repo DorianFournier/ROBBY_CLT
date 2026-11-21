@@ -245,7 +245,14 @@ ramasser : il ramasse... les ennemis !
 
 Conséquence : en phase 2, **un robot immobile est une proie**. Un Défenseur
 dont le bouclier fait face au Collecteur l'arrête (on ne traverse pas un
-bouclier ennemi). Outils : `state.dump_center`, `state.in_dump(point)`,
+bouclier ennemi)... sauf dans une zone neutre.
+
+**Zones neutres : les bases et la déchèterie.** Dans une base (rayon 700)
+ou dans la déchèterie (rayon 700, phase 2), personne ne peut bloquer
+personne : les robots ennemis s'y traversent, les boucliers n'y arrêtent
+pas les déplacements, et le bouclier d'un Défenseur qui s'y trouve ne
+bloque personne. Inutile d'y camper pour en interdire l'accès ! Les tirs,
+eux, fonctionnent partout. Outil : `state.in_neutral_zone(point)`. Outils : `state.dump_center`, `state.in_dump(point)`,
 `state.grab_targets(c)`, `state.captives`, et `robot.captive_id` (prisonnier
 porté par ce Collecteur), `robot.captured_by` (Collecteur qui porte ce robot).
 
@@ -329,6 +336,7 @@ client affiche pourquoi.
 | `state.dump_center`, `state.in_dump(point)` | déchèterie (phase 2, `None` en phase 1) : son centre, ce point est-il dedans ? |
 | `state.grab_targets(c)` | ennemis à l'arrêt, au contact, que ce Collecteur attraperait |
 | `state.captives` | prisonniers visibles (les vôtres et ceux de vos Collecteurs) |
+| `state.neutral_zones()`, `state.in_neutral_zone(point)` | zones neutres (bases, et déchèterie en phase 2) : personne n'y bloque personne |
 | `state.scores`, `state.my_score`, `state.lead` | scores de toutes les équipes (publics), le vôtre, et votre avance sur la meilleure équipe adverse (négative si vous êtes en retard) |
 | `state.elements` | les batteries : `.pos`, `.points` (ce que rapporte sa capture), `.is_free` (posée au sol, à prendre), `.carried_by_id`, `.present` (`False` pendant qu'une batterie capturée réapparaît) |
 | `state.nearest_battery(robot)` | batterie libre la plus proche, ou `None` |

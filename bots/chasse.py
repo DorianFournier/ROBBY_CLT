@@ -44,9 +44,10 @@ def barre(state, c, cap, longueur, cible=None):
     pas : on serait arrêté net en le frôlant)"""
     dx, dy = direction(cap)
     gene = 2 * state.robot_radius + 50
+    zones = state.neutral_zones()
     for e in state.enemies:
-        if e is cible:
-            continue
+        if e is cible or state.in_neutral_zone(e, zones):
+            continue        # dans une zone neutre, il ne bloque personne
         ex, ey = e.x - c.x, e.y - c.y
         t = min(max(ex * dx + ey * dy, 0.0), longueur)     # point le plus proche
         proche = math.hypot(ex - dx * t, ey - dy * t)

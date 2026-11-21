@@ -185,3 +185,18 @@ def test_dump_destroys_the_captive_and_a_dead_carrier_frees_it():
               dump=DUMP)
     assert res.deaths == [14] and res.robot(21).alive
     assert res.robot(21).captured_by is None
+
+
+def test_neutral_zones_nobody_blocks_in_the_dump():
+    """Comme le serveur : dans la déchèterie (zone neutre), les ennemis se
+    traversent, et le bouclier d'un Défenseur qui s'y trouve ne bloque pas."""
+    robots = [robot(14, 1, "C", 7500, 5600, captive_id=23),
+              robot(23, 2, "K", 7500, 5600, captured_by=14),
+              robot(32, 3, "D", 7500, 7500, shield=0)]
+    res = run(robots, {1: [move(14, angle=180, speed=600)]}, phase=2, zone=ZONE2,
+              dump=DUMP)
+    assert res.robot(14).y == pytest.approx(6200)        # le bouclier ne l'arrête pas
+    robots[0]["y"] = robots[1]["y"] = 6900
+    res = run(robots, {1: [move(14, angle=180, speed=600)]}, phase=2, zone=ZONE2,
+              dump=DUMP)
+    assert res.dumps == [(14, 23, 375)]                  # il passe sur le Défenseur
