@@ -393,7 +393,12 @@ class TurnSimulator:
                         if neutre(new) or neutre(other):
                             continue
                         d_new = distance(new, other)
-                        if d_new < gap and d_new < distance(pos[rid], pos[o]) - 1e-9:
+                        d_old = distance(pos[rid], pos[o])
+                        # comme le serveur : refusé seulement en avançant
+                        # vers l'autre (celui qui s'éloigne n'est pas arrêté
+                        # par un poursuivant plus rapide)
+                        if d_new < gap and d_new < d_old - 1e-9 \
+                                and distance(new, pos[o]) < d_old - 1e-9:
                             refused.add(rid)
                             break
                 if not refused:
