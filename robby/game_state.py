@@ -155,6 +155,8 @@ class GameState:
         state.grab_targets(c)                ennemis à l'arrêt qu'un Collecteur
                                              peut attraper
         state.captives                       prisonniers visibles
+        state.in_neutral_zone(p)             bases et déchèterie : personne
+                                             n'y bloque personne
     """
 
     def __init__(self, msg: dict, team_id: int, config: dict | None = None):
@@ -456,6 +458,23 @@ class GameState:
         center = self.dump_center
         return center is not None and \
             distance(_pos(pos), center) <= self.dump["radius"]
+
+    def neutral_zones(self) -> list:
+        """Zones neutres [(centre, rayon)] : les bases de toutes les équipes,
+        et la déchèterie en phase 2. Dedans, les ennemis se traversent et
+        les boucliers ne bloquent pas ; le bouclier d'un Défenseur qui s'y
+        trouve ne bloque personne. Impossible d'y bloquer quelqu'un."""
+        bases = self.config.get("bases") or {}
+        zones = [(tuple(b), self.base_radius) for b in bases.values() if b]
+        if self.dump:
+            zones.append((self.dump_center, self.dump["radius"]))
+        return zones
+
+    def in_neutral_zone(self, pos, zones=None) -> bool:
+        """Ce point (robot ou point) est-il dans une zone neutre ?"""
+        p = _pos(pos)
+        zones = self.neutral_zones() if zones is None else zones
+        return any(distance(p, c) <= r for c, r in zones)
 
     def grab_targets(self, collector) -> list[Robot]:
         """Ennemis visibles que ce Collecteur attraperait s'il restait là :

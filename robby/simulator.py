@@ -347,7 +347,16 @@ class TurnSimulator:
         start = {r.id: r.pos for r in alive}
         pos = dict(start)
         team = {r.id: r.team_id for r in alive}
-        enemy_shields = {t: self._shields(robots, t) for t in set(team.values())}
+        # zones neutres (bases, déchèterie) : on s'y traverse, les boucliers
+        # n'y bloquent pas, et le bouclier d'un Défenseur qui s'y trouve ne
+        # bloque personne
+        zones = st.neutral_zones()
+
+        def neutre(p):
+            return any(distance(p, c) <= r for c, r in zones)
+
+        enemy_shields = {t: [sh for sh in self._shields(robots, t) if not neutre(sh[0])]
+                         for t in set(team.values())}
         low_x, high_x = self.radius, self.width - self.radius
         low_y, high_y = self.radius, self.height - self.radius
         gap = 2 * self.radius
@@ -369,7 +378,8 @@ class TurnSimulator:
                 sx, sy = moves[rid]
                 nx = min(max(x + sx, low_x), high_x)
                 ny = min(max(y + sy, low_y), high_y)
-                if in_shield((nx, ny), team[rid]) and not in_shield((x, y), team[rid]):
+                if in_shield((nx, ny), team[rid]) and not in_shield((x, y), team[rid]) \
+                        and not neutre((nx, ny)):
                     stopped.add(rid)
                     continue
                 proposed[rid] = (nx, ny)
@@ -379,7 +389,10 @@ class TurnSimulator:
                     for o in pos:
                         if team[o] == team[rid]:
                             continue
-                        d_new = distance(new, proposed.get(o, pos[o]))
+                        other = proposed.get(o, pos[o])
+                        if neutre(new) or neutre(other):
+                            continue
+                        d_new = distance(new, other)
                         if d_new < gap and d_new < distance(pos[rid], pos[o]) - 1e-9:
                             refused.add(rid)
                             break
