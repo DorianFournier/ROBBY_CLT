@@ -9,7 +9,7 @@
 #     suit le Radar.
 #   - Zone (phase 2) : tout robot en danger rentre dans la zone sûre d'abord.
 
-from bots.chasse import aller, chasse, heurte, ronde
+from bots.chasse import aller, aveugle, chasse, heurte, patrouille, ronde
 from robby import GameState, shield, shoot
 from robby.geometry import angle_diff
 from robby.strategy import Strategy
@@ -94,6 +94,8 @@ class RusherBot(Strategy):
         if enemy:
             return state.move_towards(k, state.clamp_to_zone(enemy.pos, 2),
                                       stop_at=2200)
+        if aveugle(state):          # plus de Radar : patrouille
+            return patrouille(state, k)
         radars = state.my_robots_of_type("R")
         if radars:
             return state.move_towards(k, state.clamp_to_zone(radars[0].pos, 2),
@@ -111,4 +113,10 @@ class RusherBot(Strategy):
         if radars:
             return state.move_towards(d, state.clamp_to_zone(radars[0].pos, 2),
                                       stop_at=700)
+        if aveugle(state):          # plus de Radar : il suit le Destructeur
+            killers = state.my_robots_of_type("K")
+            if killers:
+                return state.move_towards(d, state.clamp_to_zone(killers[0].pos, 2),
+                                          stop_at=700)
+            return patrouille(state, d)
         return None
