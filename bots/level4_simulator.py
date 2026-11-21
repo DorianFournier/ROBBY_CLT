@@ -23,7 +23,7 @@
 # Nombre de simulations borné (MAX_EVALS) : le temps de réflexion reste
 # court, et le bot est reproductible (pas de limite en secondes).
 
-from bots.chasse import chasse
+from bots.chasse import chasse, heurte
 from bots.level3_tactician import TacticianBot
 from robby import GameState, move, shield
 from robby.geometry import angle_to, direction, distance
@@ -114,6 +114,7 @@ class SimulatorBot(Strategy):
                        if state.turn - m[3] <= MEMORY
                        or any(e.carried_by_id == i for e in state.elements)}
         ghosts = [self.ghost(i, *m) for i, m in self.memory.items() if i not in visible]
+        ghosts += self.bump_ghosts(state)
 
         self.ghosts = ghosts
         self.sim = TurnSimulator(state, extra=ghosts)
@@ -147,7 +148,28 @@ class SimulatorBot(Strategy):
             if not improved or self.evals >= MAX_EVALS:
                 break
         self.best_score = best
-        return [c for c in plan.values() if c]
+        sent = [c for c in plan.values() if c]
+        self.last = {c["robot_id"]: c for c in sent}
+        self.scout.last = self.last       # bot3 sait aussi ce qui a été envoyé
+        return sent
+
+    def bump_ghosts(self, state):
+        """Un de nos robots arrêté net alors qu'il devait rouler, sans
+        ennemi visible devant lui : un ennemi invisible (faute de Radar) lui
+        barre la route. On le place juste devant, comme un fantôme : le
+        simulateur peut alors évaluer un tir dans cette direction."""
+        ghosts = []
+        for r in state.my_robots:
+            bump = heurte(r, getattr(self, "last", {}).get(r.id))
+            if bump is None:
+                continue
+            dx, dy = direction(bump)
+            gap = 2 * state.robot_radius
+            pos = (r.x + dx * gap, r.y + dy * gap)
+            if any(distance(e.pos, pos) < gap for e in state.enemies):
+                continue        # on le voit déjà
+            ghosts.append(SimRobot(-r.id, 0, "K", pos[0], pos[1], ghost=True))
+        return ghosts
 
     def ghost(self, robot_id, team_id, rtype, pos, seen_turn, shield_angle):
         """Ennemi disparu, supposé immobile... sauf le porteur de la batterie,
