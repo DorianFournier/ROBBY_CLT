@@ -87,11 +87,11 @@ tire (K) ou tourne son bouclier (D), puisqu'on n'envoie qu'une commande par
 robot et par tour. Il s'arrête seulement :
 
 - si vous lui envoyez `stop(robot)` (ou une vitesse 0) ;
-- s'il allait heurter un robot ennemi ou entrer dans un bouclier ennemi
-  (il s'arrête net, vitesse 0) ;
+- s'il allait entrer dans un bouclier ennemi (il s'arrête net, vitesse 0) ;
 - s'il est pénalisé (moteurs coupés).
 
-Il traverse ses alliés, et contre un bord de l'arène il glisse le long du mur
+Il **traverse les autres robots**, alliés comme ennemis : seuls les
+boucliers des Défenseurs bloquent un déplacement. Contre un bord de l'arène il glisse le long du mur
 en gardant son cap. `robot.heading` et `robot.speed` donnent le cap et la
 vitesse actuels, y compris ceux des ennemis visibles : `state.predict(ennemi)`
 dit où il sera au tour suivant s'il continue.
@@ -229,9 +229,9 @@ ramasser : il ramasse... les ennemis !
   pourraient s'attraper l'un l'autre : celui qui **arrive au contact** (il a
   roulé ce tour) prend celui qui est resté **garé** ; s'ils ont roulé tous
   les deux, ou aucun, personne.
-- Un robot qui roule ne peut pas être attrapé... sauf si on lui **coupe la
-  route** : bloqué par le Collecteur, il s'arrête net, au contact, et il est
-  pris dans la foulée.
+- Un robot qui roule ne peut pas être attrapé... sauf s'il est arrêté net
+  par le **bouclier** d'un de vos Défenseurs : votre Collecteur peut alors
+  venir le cueillir. Belle combinaison d'équipe !
 - Le prisonnier est **inactif** : ses commandes sont ignorées (sans
   pénalité), il ne bloque personne, les tirs le traversent (on ne peut ni
   l'achever ni le délivrer en tirant), et son Radar ne voit plus rien.
@@ -248,11 +248,13 @@ dont le bouclier fait face au Collecteur l'arrête (on ne traverse pas un
 bouclier ennemi)... sauf dans une zone neutre.
 
 **Zones neutres : les bases et la déchèterie.** Dans une base (rayon 700)
-ou dans la déchèterie (rayon 700, phase 2), personne ne peut bloquer
-personne : les robots ennemis s'y traversent, les boucliers n'y arrêtent
-pas les déplacements, et le bouclier d'un Défenseur qui s'y trouve ne
-bloque personne. Inutile d'y camper pour en interdire l'accès ! Les tirs,
-eux, fonctionnent partout. Outil : `state.in_neutral_zone(point)`. Outils : `state.dump_center`, `state.in_dump(point)`,
+ou dans la déchèterie (rayon 700, phase 2), aucun bouclier ne bloque : les
+boucliers n'y arrêtent pas les déplacements, et le bouclier d'un Défenseur
+qui s'y trouve ne bloque personne. Inutile d'y camper pour en interdire
+l'accès ! Les tirs, eux, fonctionnent partout
+(`state.in_neutral_zone(point)`).
+
+Outils : `state.dump_center`, `state.in_dump(point)`,
 `state.grab_targets(c)`, `state.captives`, et `robot.captive_id` (prisonnier
 porté par ce Collecteur), `robot.captured_by` (Collecteur qui porte ce robot).
 
@@ -336,7 +338,7 @@ client affiche pourquoi.
 | `state.dump_center`, `state.in_dump(point)` | déchèterie (phase 2, `None` en phase 1) : son centre, ce point est-il dedans ? |
 | `state.grab_targets(c)` | ennemis à l'arrêt, au contact, que ce Collecteur attraperait |
 | `state.captives` | prisonniers visibles (les vôtres et ceux de vos Collecteurs) |
-| `state.neutral_zones()`, `state.in_neutral_zone(point)` | zones neutres (bases, et déchèterie en phase 2) : personne n'y bloque personne |
+| `state.neutral_zones()`, `state.in_neutral_zone(point)` | zones neutres (bases, et déchèterie en phase 2) : aucun bouclier n'y bloque |
 | `state.scores`, `state.my_score`, `state.lead` | scores de toutes les équipes (publics), le vôtre, et votre avance sur la meilleure équipe adverse (négative si vous êtes en retard) |
 | `state.elements` | les batteries : `.pos`, `.points` (ce que rapporte sa capture), `.is_free` (posée au sol, à prendre), `.carried_by_id`, `.present` (`False` pendant qu'une batterie capturée réapparaît) |
 | `state.nearest_battery(robot)` | batterie libre la plus proche, ou `None` |
@@ -398,15 +400,14 @@ nul 0,5, défaite 0 :
 | bot4 contre bot2 | 0,72 |
 
 En phase 2, tous les bots envoient leur Collecteur à la chasse
-(`bots/chasse.py`) : il attrape les ennemis à l'arrêt ou leur coupe la route,
-et les porte à la déchèterie (par le bord le plus proche). Sans proie en
+(`bots/chasse.py`) : il attrape les ennemis à l'arrêt et les porte à la déchèterie (par le bord le plus proche). Sans proie en
 vue, il suit les pistes puis patrouille autour du centre : il ne reste
 jamais garé. Tant que leurs Destructeurs se battent, il leur laisse les
 proies couvertes par un Destructeur ennemi ; quand il n'en reste plus,
-il attaque tout, et le Radar le suit pour lui donner la vue. Un robot
-contourne l'ennemi qui barre son trajet (d'abord par la droite), et un
-Destructeur arrêté net sans rien voir tire droit devant : quelque chose
-d'invisible (faute de Radar) lui barre la route.
+il attaque tout, et le Radar le suit pour lui donner la vue. Un
+Destructeur arrêté net sans rien voir tire droit devant : un bouclier
+ennemi invisible (faute de Radar) lui barre la route. Sans Radar, en
+phase 2, l'équipe patrouille autour du centre au lieu de rester garée.
 
 Lire leur code (`bots/level2_rusher.py`, `bots/level3_tactician.py`...) est une
 bonne source d'idées... mais pour les battre, il faudra faire mieux !
