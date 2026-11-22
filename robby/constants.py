@@ -37,7 +37,8 @@ DEFAULT_CONFIG = {
     "shield_recharge_delay": 3, # tours sans impact avant de regagner 1 point
     # déchèterie (phase 2) : voir le README
     "dump_enabled": True,
-    "grab_radius": 700,         # contact pour attraper un ennemi à l'arrêt
+    "grab_radius": 700,         # contact pour attraper un ennemi lent
+    "grab_max_speed": 1000,     # ... qui roule à cette vitesse au plus
     "carry_speed": 600,         # vitesse max d'un Collecteur chargé
     "dump_radius": 700,         # rayon de la déchèterie
     "dump_points": {"K": 375, "D": 750, "C": 750, "R": 1125},

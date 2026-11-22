@@ -56,6 +56,7 @@ CAPTIVE_HELD = 0.7   # part de sa valeur que vaut un prisonnier tenu
 TO_DUMP = 0.15       # par unité qui reste jusqu'à la déchèterie
 GRAB_DANGER = 0.3    # un de nos robots à l'arrêt près d'un Collecteur ennemi
 GRAB_DANGER_RANGE = 1800
+GRAB_MAX_SPEED = 1000  # un robot plus lent peut être attrapé (règle du serveur)
 TO_PREY = 0.03       # Collecteur libre : par unité jusqu'à la proie la plus proche
 TO_PREY_ALONE = 0.15  # ... quand nous n'avons plus de Destructeur (il attaque)
 
@@ -70,13 +71,15 @@ def captives_held(res, team_id):
 
 
 def grab_threatened(res, team_id):
-    """Nos robots libres à l'arrêt, près d'un Collecteur ennemi libre :
-    ils pourraient être attrapés au tour suivant."""
+    """Nos robots libres lents (ou arrêtés), près d'un Collecteur ennemi
+    libre : ils pourraient être attrapés au tour suivant. Notre Collecteur
+    ne l'est qu'arrêté (deux Collecteurs qui roulent ne se prennent pas)."""
     hunters = [c for c in res.robots.values()
                if c.alive and not c.captive and c.type == "C"
                and c.team_id != team_id and c.captive_id is None]
     return [r for r in res.robots.values()
-            if r.alive and not r.captive and r.team_id == team_id and r.speed == 0
+            if r.alive and not r.captive and r.team_id == team_id
+            and r.speed <= GRAB_MAX_SPEED and (r.type != "C" or r.speed == 0)
             and any(distance(r.pos, c.pos) <= GRAB_DANGER_RANGE for c in hunters)]
 
 
@@ -298,7 +301,8 @@ class SimulatorBot(Strategy):
                     cands.append(st.move_towards(robot, st.dump_center))
                 else:
                     for e in enemies:
-                        if e.speed == 0 and e.captive_id is None and \
+                        if e.speed <= st.config["grab_max_speed"] and \
+                                e.captive_id is None and \
                                 robot.distance_to(e) <= 4000:
                             cands.append(st.move_towards(robot, e))
         elif robot.type == "R":

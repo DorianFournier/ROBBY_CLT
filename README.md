@@ -222,16 +222,17 @@ Le plus simple est d'utiliser les outils de `state` (voir plus bas).
 ramasser : il ramasse... les ennemis !
 
 - Un Collecteur qui finit son tour **au contact** (700 unités, centre à
-  centre) d'un robot ennemi **à l'arrêt** (vitesse 0 : arrêté, bloqué ou
-  pénalisé) l'**attrape**. Un robot qui roule ne peut pas être attrapé.
+  centre) d'un robot ennemi **arrêté ou lent** (vitesse de 1000 au plus :
+  pas plus vite qu'un Collecteur) l'**attrape**. Un robot qui fonce reste
+  insaisissable : en phase 2, ne traînez pas !
   Deux Collecteurs sur le même robot : le plus proche l'emporte. Un
   Collecteur chargé ne peut pas être attrapé. Deux Collecteurs qui
   pourraient s'attraper l'un l'autre : celui qui **arrive au contact** (il a
   roulé ce tour) prend celui qui est resté **garé** ; s'ils ont roulé tous
   les deux, ou aucun, personne.
-- Un robot qui roule ne peut pas être attrapé... sauf s'il est arrêté net
-  par le **bouclier** d'un de vos Défenseurs : votre Collecteur peut alors
-  venir le cueillir. Belle combinaison d'équipe !
+- Un robot rapide arrêté net par le **bouclier** d'un de vos Défenseurs
+  devient une proie : votre Collecteur peut venir le cueillir. Belle
+  combinaison d'équipe !
 - Le prisonnier est **inactif** : ses commandes sont ignorées (sans
   pénalité), il ne bloque personne, les tirs le traversent (on ne peut ni
   l'achever ni le délivrer en tirant), et son Radar ne voit plus rien.
@@ -524,7 +525,9 @@ serveur → {"type": "game_start", "team_id": 2, "seed": 106, "game": 1, "games"
                {"robot_id": 11, "action": "MOVE", "angle": 90, "speed": 1000}, ...]}
              (avant turn_timeout)
   serveur → {"type": "turn_result", "turn", "data": {"moves", "shots", "deaths",
-             "shields", "penalties", "zone_deaths", "shield_breaks"}}
+             "shields", "penalties", "zone_deaths", "shield_breaks",
+             "grabs", "dumps"}}
+             (seulement vos robots et les ennemis que vos Radars voient)
 serveur → {"type": "game_over", "winner": 2, "scores": {...}}
 (série : retour à game_start pour la partie suivante, puis à la fin)
 serveur → {"type": "series_over", "ranking": [...]}
