@@ -131,6 +131,7 @@ class TurnSimulator:
         c = state.config
         self.dump_enabled = c.get("dump_enabled", False)
         self.grab_radius = c.get("grab_radius", 700)
+        self.grab_max_speed = c.get("grab_max_speed", 1000)
         self.carry_speed = c.get("carry_speed", 600)
         self.dump_points = c.get("dump_points", {})
         self.cross_angle = c.get("cross_angle", 90)
@@ -236,7 +237,8 @@ class TurnSimulator:
                 continue
             best = None
             for t in free:
-                if t.team_id == c.team_id or t.speed != 0 or t.captive_id is not None:
+                if t.team_id == c.team_id or t.speed > self.grab_max_speed \
+                        or t.captive_id is not None:
                     continue
                 d = distance(c.pos, t.pos)
                 if d <= self.grab_radius and (best is None or (d, t.id) < best[:2]):

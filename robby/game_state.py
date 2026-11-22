@@ -478,12 +478,13 @@ class GameState:
 
     def grab_targets(self, collector) -> list[Robot]:
         """Ennemis visibles que ce Collecteur attraperait s'il restait là :
-        à l'arrêt (vitesse 0) et au contact (grab_radius). Phase 2 seulement."""
+        lents (grab_max_speed au plus, 1000) ou arrêtés, et au contact
+        (grab_radius). Phase 2 seulement."""
         if not self.dump or collector.type != "C" or collector.captive_id is not None:
             return []
         reach = self.config["grab_radius"]
         return [e for e in self.enemies
-                if e.speed == 0 and e.captive_id is None
+                if e.speed <= self.config["grab_max_speed"] and e.captive_id is None
                 and self.distance(collector, e) <= reach]
 
     def storm_radius(self, lookahead: int = 0) -> float:

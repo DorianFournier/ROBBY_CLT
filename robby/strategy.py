@@ -30,8 +30,11 @@ class Strategy:
         raise NotImplementedError
 
     def on_turn_result(self, turn: int, result: dict) -> None:
-        """Appelée après chaque tour avec ce qui s'est passé (tous les tirs,
-        déplacements, morts...)."""
+        """Appelée après chaque tour avec ce qui s'est passé (tirs,
+        déplacements, morts...), mais seulement pour vos robots et les
+        ennemis que vos Radars voient (brouillard de guerre). Un tir qui vous
+        touche sans que vous voyiez le tireur apparaît sans son origine
+        (shooter_id, from et angle à None). Sans Radar, vous êtes aveugle."""
 
     def on_game_over(self, message: dict) -> None:
         """Appelée en fin de partie (scores, vainqueur)."""

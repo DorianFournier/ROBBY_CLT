@@ -103,7 +103,8 @@ def chasse(state, c, souvenirs=(), offensif=None):
     def cout(e):
         # un Collecteur garé : en dernier recours (il peut repartir, et deux
         # Collecteurs au contact se bloquent sans se prendre)
-        return c.distance_to(e) + (0 if e.speed == 0 else ROULE) + \
+        rapide = e.speed > state.config["grab_max_speed"]   # insaisissable
+        return c.distance_to(e) + (ROULE if rapide else 0) + \
             (DERNIER_RECOURS if e.type == "C" else 0)
 
     if not offensif:
